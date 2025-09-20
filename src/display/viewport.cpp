@@ -27,6 +27,7 @@
 #include "quad.h"
 #include "glstate.h"
 #include "graphics.h"
+#include <cmath>
 
 #include <SDL_rect.h>
 

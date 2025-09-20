@@ -44,9 +44,10 @@ public:
 	DECL_ATTR( OY,    int    )
 	DECL_ATTR( Color, Color& )
 	DECL_ATTR( Tone,  Tone&  )
-	DECL_ATTR( Angle, float )
 
 	void initDynAttribs();
+	void setAngle(float angle);
+    float getAngle() const;
 
 private:
 	void initViewport(int x, int y, int width, int height);
