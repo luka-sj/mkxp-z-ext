@@ -27,7 +27,6 @@
 #include "quad.h"
 #include "glstate.h"
 #include "graphics.h"
-#include <cmath>
 
 #include <SDL_rect.h>
 
@@ -186,20 +185,10 @@ void Viewport::initDynAttribs()
 	p->updateRectCon();
 }
 
-static float normalizeAngle(float angle)
-{
-    // Normalize to 0-360 range
-    angle = fmod(angle, 360.0f);
-    if (angle < 0.0f) {
-        angle += 360.0f;
-    }
-    return angle;
-}
-
 void Viewport::setAngle(float angle)
 {
     guardDisposed();
-    p->angle = normalizeAngle(angle);
+    p->angle = angle;
 }
 
 float Viewport::getAngle() const

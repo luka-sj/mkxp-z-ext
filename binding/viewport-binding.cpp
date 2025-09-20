@@ -86,11 +86,10 @@ RB_METHOD(viewportSetAngle)
 
     Viewport *v = getPrivateData<Viewport>(self);
 
-    double angleVal;  // Use double, not VALUE
+    double angleVal;
     rb_get_args(argc, argv, "f", &angleVal RB_ARG_END);
 
-    float angle = static_cast<float>(angleVal);
-    v->setAngle(angle);
+    v->setAngle(static_cast<float>(angleVal));
 
     return rb_float_new(angleVal);
 }
