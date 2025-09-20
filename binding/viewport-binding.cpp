@@ -77,7 +77,6 @@ RB_METHOD(viewportGetAngle)
     RB_UNUSED_PARAM;
 
     Viewport *v = getPrivateData<Viewport>(self);
-
     return rb_float_new(v->getAngle());
 }
 
@@ -87,18 +86,13 @@ RB_METHOD(viewportSetAngle)
 
     Viewport *v = getPrivateData<Viewport>(self);
 
-    VALUE angleVal;
-    rb_get_args(argc, argv, "o", &angleVal RB_ARG_END);
+    double angleVal;  // Use double, not VALUE
+    rb_get_args(argc, argv, "f", &angleVal RB_ARG_END);
 
-    float angle = static_cast<float>(rb_num2dbl(angleVal));
-
-    if (!isfinite(angle)) {
-        rb_raise(rb_eArgError, "angle must be a finite number");
-    }
-
+    float angle = static_cast<float>(angleVal);
     v->setAngle(angle);
 
-    return rb_float_new(v->getAngle()); // Return normalized angle
+    return rb_float_new(angleVal);
 }
 
 DEF_GFX_PROP_OBJ_VAL(Viewport, Rect, Rect, "rect")

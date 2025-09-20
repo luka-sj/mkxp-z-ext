@@ -198,11 +198,13 @@ static float normalizeAngle(float angle)
 
 void Viewport::setAngle(float angle)
 {
+    guardDisposed();
     p->angle = normalizeAngle(angle);
 }
 
 float Viewport::getAngle() const
 {
+    guardDisposed();
     return p->angle;
 }
 
