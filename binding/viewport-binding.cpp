@@ -1,23 +1,23 @@
 /*
- ** viewport-binding.cpp
- **
- ** This file is part of mkxp.
- **
- ** Copyright (C) 2013 - 2021 Amaryllis Kulla <ancurio@mapleshrine.eu>
- **
- ** mkxp is free software: you can redistribute it and/or modify
- ** it under the terms of the GNU General Public License as published by
- ** the Free Software Foundation, either version 2 of the License, or
- ** (at your option) any later version.
- **
- ** mkxp is distributed in the hope that it will be useful,
- ** but WITHOUT ANY WARRANTY; without even the implied warranty of
- ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- ** GNU General Public License for more details.
- **
- ** You should have received a copy of the GNU General Public License
- ** along with mkxp.  If not, see <http://www.gnu.org/licenses/>.
- */
+** viewport-binding.cpp
+**
+** This file is part of mkxp.
+**
+** Copyright (C) 2013 - 2021 Amaryllis Kulla <ancurio@mapleshrine.eu>
+**
+** mkxp is free software: you can redistribute it and/or modify
+** it under the terms of the GNU General Public License as published by
+** the Free Software Foundation, either version 2 of the License, or
+** (at your option) any later version.
+**
+** mkxp is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+**
+** You should have received a copy of the GNU General Public License
+** along with mkxp.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
 #include "binding-types.h"
 #include "binding-util.h"
@@ -26,6 +26,7 @@
 #include "sceneelement-binding.h"
 #include "sharedstate.h"
 #include "viewport.h"
+#include "customshader.h"
 
 #if RAPI_FULL > 187
 DEF_TYPE(Viewport);
@@ -33,9 +34,12 @@ DEF_TYPE(Viewport);
 DEF_ALLOCFUNC(Viewport);
 #endif
 
+// Add the CustomShader type definition (you'll need this in binding-types.h or here)
+DEF_TYPE_CUSTOMNAME(CustomShader, Shader);
+
 RB_METHOD(viewportInitialize) {
     Viewport *v;
-    
+
     if (argc == 0 && rgssVer >= 3) {
         GFX_LOCK;
         v = new Viewport();
@@ -44,32 +48,70 @@ RB_METHOD(viewportInitialize) {
          * and does NOT replace its 'rect' property */
         VALUE rectObj;
         Rect *rect;
-        
+
         rb_get_args(argc, argv, "o", &rectObj RB_ARG_END);
-        
+
         rect = getPrivateDataCheck<Rect>(rectObj, RectType);
-        
+
         GFX_LOCK;
         v = new Viewport(rect);
     } else {
         int x, y, width, height;
-        
+
         rb_get_args(argc, argv, "iiii", &x, &y, &width, &height RB_ARG_END);
         GFX_LOCK;
         v = new Viewport(x, y, width, height);
     }
-    
+
     setPrivateData(self, v);
-    
+
     /* Wrap property objects */
     v->initDynAttribs();
-    
+
     wrapProperty(self, &v->getRect(), "rect", RectType);
     wrapProperty(self, &v->getColor(), "color", ColorType);
     wrapProperty(self, &v->getTone(), "tone", ToneType);
-    
+
     GFX_UNLOCK;
     return self;
+}
+
+RB_METHOD(viewportGetShader)
+{
+    RB_UNUSED_PARAM;
+
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    GUARD_EXC(
+        CustomShader *shader = v->getShader();
+        if (!shader)
+            return Qnil;
+
+        return rb_iv_get(self, "@shader");
+    )
+
+    return Qnil;
+}
+
+RB_METHOD(viewportSetShader)
+{
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    VALUE shaderObj = Qnil;
+    CustomShader *shader = 0;
+
+    rb_get_args(argc, argv, "o", &shaderObj RB_ARG_END);
+
+    if (!NIL_P(shaderObj))
+    {
+        shader = getPrivateDataCheck<CustomShader>(shaderObj, ShaderType);
+    }
+
+    GUARD_EXC( v->setShader(shader); )
+
+    rb_iv_set(self, "@shader", shaderObj);
+
+    return shaderObj;
 }
 
 DEF_GFX_PROP_OBJ_VAL(Viewport, Rect, Rect, "rect")
@@ -86,13 +128,16 @@ void viewportBindingInit() {
 #else
     rb_define_alloc_func(klass, ViewportAllocate);
 #endif
-    
+
     disposableBindingInit<Viewport>(klass);
     flashableBindingInit<Viewport>(klass);
     sceneElementBindingInit<Viewport>(klass);
-    
+
     _rb_define_method(klass, "initialize", viewportInitialize);
-    
+
+    rb_define_method(klass, "shader", RUBY_METHOD_FUNC(viewportGetShader), 0);
+    rb_define_method(klass, "shader=", RUBY_METHOD_FUNC(viewportSetShader), 1);
+
     INIT_PROP_BIND(Viewport, Rect, "rect");
     INIT_PROP_BIND(Viewport, OX, "ox");
     INIT_PROP_BIND(Viewport, OY, "oy");

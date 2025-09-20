@@ -27,37 +27,42 @@
 #include "quad.h"
 #include "glstate.h"
 #include "graphics.h"
+#include "customshader.h"
 
+#include <SDL_timer.h>  // For SDL_GetTicks
 #include <SDL_rect.h>
 
 #include "sigslot/signal.hpp"
 
 struct ViewportPrivate
 {
-	/* Needed for geometry changes */
-	Viewport *self;
+    /* Needed for geometry changes */
+    Viewport *self;
 
-	Rect *rect;
-	sigslot::connection rectCon;
+    Rect *rect;
+    sigslot::connection rectCon;
 
-	Color *color;
-	Tone *tone;
+    Color *color;
+    Tone *tone;
 
-	IntRect screenRect;
-	int isOnScreen;
+    CustomShader *shader;  // Add this line
 
-	EtcTemps tmp;
+    IntRect screenRect;
+    int isOnScreen;
 
-	ViewportPrivate(int x, int y, int width, int height, Viewport *self)
-	    : self(self),
-	      rect(&tmp.rect),
-	      color(&tmp.color),
-	      tone(&tmp.tone),
-	      isOnScreen(false)
-	{
-		rect->set(x, y, width, height);
-		updateRectCon();
-	}
+    EtcTemps tmp;
+
+    ViewportPrivate(int x, int y, int width, int height, Viewport *self)
+        : self(self),
+          rect(&tmp.rect),
+          color(&tmp.color),
+          tone(&tmp.tone),
+          shader(0),  // Initialize shader to null
+          isOnScreen(false)
+    {
+        rect->set(x, y, width, height);
+        updateRectCon();
+    }
 
 	~ViewportPrivate()
 	{
@@ -182,31 +187,60 @@ void Viewport::initDynAttribs()
 	p->updateRectCon();
 }
 
+void Viewport::setShader(CustomShader *shader)
+{
+    guardDisposed();
+    p->shader = shader;
+}
+
+CustomShader *Viewport::getShader() const
+{
+    guardDisposed();
+    return p->shader;
+}
+
 /* Scene */
 void Viewport::composite()
 {
-	if (emptyFlashFlag)
-		return;
+    if (emptyFlashFlag)
+        return;
 
-	bool renderEffect = p->needsEffectRender(flashing);
+    bool renderEffect = p->needsEffectRender(flashing);
 
-	if (elements.getSize() == 0 && !renderEffect)
-		return;
+    if (elements.getSize() == 0 && !renderEffect)
+        return;
 
-	/* Setup scissor */
-	glState.scissorTest.pushSet(true);
-	glState.scissorBox.pushSet(p->rect->toIntRect());
+    /* Setup scissor */
+    glState.scissorTest.pushSet(true);
+    glState.scissorBox.pushSet(p->rect->toIntRect());
 
-	Scene::composite();
+    // Apply custom shader if present
+    if (p->shader && !p->shader->isDisposed())
+    {
+        p->shader->bind();
 
-	/* If any effects are visible, request parent Scene to
-	 * render them. */
-	if (renderEffect)
-		scene->requestViewportRender
-		        (p->color->norm, flashColor, p->tone->norm);
+        // Set built-in uniforms
+        IntRect rect = p->rect->toIntRect();
+        p->shader->setResolution(Vec2((float)rect.w, (float)rect.h));
+        p->shader->setTime(SDL_GetTicks() / 1000.0f);
+    }
 
-	glState.scissorBox.pop();
-	glState.scissorTest.pop();
+    Scene::composite();
+
+    // Unbind custom shader
+    if (p->shader && !p->shader->isDisposed())
+    {
+        p->shader->unbind();
+    }
+
+    /* If any effects are visible, request parent Scene to
+     * render them. */
+    if (renderEffect)
+        scene->requestViewportRender
+                (p->color->norm, flashColor, p->tone->norm);
+
+    glState.scissorBox.pop();
+    glState.scissorTest.pop();
 }
 
 /* SceneElement */
@@ -245,11 +279,11 @@ Viewport *ViewportElement::getViewport() const
 void ViewportElement::setViewport(Viewport *viewport)
 {
 	m_viewport = viewport;
-	
+
 	viewportDispCon.disconnect();
 	if (rgssVer == 1 && viewport)
 		viewportDispCon = viewport->wasDisposed.connect(&ViewportElement::viewportElementDisposal, this);
-	
+
 	setScene(viewport ? *viewport : *shState->screen());
 	onViewportChange();
 	onGeometryChange(scene->getGeometry());
