@@ -182,8 +182,6 @@ void Viewport::initDynAttribs()
 	p->color = new Color;
 	p->tone = new Tone;
 
-	addDisposableAttr("angle", p->angle);
-
 	p->updateRectCon();
 }
 
@@ -223,9 +221,9 @@ void Viewport::composite()
 	if (needsRotation)
     {
         glPushMatrix();
-        glTranslatef(p->rect.width / 2.0f, p->rect.height / 2.0f, 0.0f);
+        glTranslatef(p->rect->width / 2.0f, p->rect->height / 2.0f, 0.0f);
         glRotatef(p->angle, 0.0f, 0.0f, 1.0f);
-        glTranslatef(-p->rect.width / 2.0f, -p->rect.height / 2.0f, 0.0f);
+        glTranslatef(-p->rect->width / 2.0f, -p->rect->height / 2.0f, 0.0f);
     }
 
 	/* Setup scissor */
