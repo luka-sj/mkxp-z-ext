@@ -34,7 +34,7 @@ RB_METHOD(shaderInitialize)
 
     CustomShader *s = 0;
 
-    GUARD_EXC( s = new CustomShader(fragmentPath); )
+    GFX_GUARD_EXC( s = new CustomShader(fragmentPath); );
 
     setPrivateData(self, s);
 
@@ -49,7 +49,7 @@ RB_METHOD(shaderSetFloat)
 
     CustomShader *s = getPrivateData<CustomShader>(self);
 
-    GUARD_EXC( s->setUniformF(name, (float)value); )
+    GUAGFX_GUARD_EXCRD_EXC( s->setUniformF(name, (float)value); );
 
     return Qnil;
 }
@@ -62,7 +62,7 @@ RB_METHOD(shaderSetInt)
 
     CustomShader *s = getPrivateData<CustomShader>(self);
 
-    GUARD_EXC( s->setUniformI(name, value); )
+    GFX_GUARD_EXC( s->setUniformI(name, value); );
 
     return Qnil;
 }
@@ -75,7 +75,7 @@ RB_METHOD(shaderSetVec2)
 
     CustomShader *s = getPrivateData<CustomShader>(self);
 
-    GUARD_EXC( s->setUniformVec2(name, Vec2((float)x, (float)y)); )
+    GFX_GUARD_EXC( s->setUniformVec2(name, Vec2((float)x, (float)y)); );
 
     return Qnil;
 }
@@ -88,7 +88,7 @@ RB_METHOD(shaderSetVec4)
 
     CustomShader *s = getPrivateData<CustomShader>(self);
 
-    GUARD_EXC( s->setUniformVec4(name, Vec4((float)x, (float)y, (float)z, (float)w)); )
+    GFX_GUARD_EXC( s->setUniformVec4(name, Vec4((float)x, (float)y, (float)z, (float)w)); );
 
     return Qnil;
 }
@@ -108,7 +108,7 @@ RB_METHOD(shaderSetMatrix)
 
     CustomShader *s = getPrivateData<CustomShader>(self);
 
-    GUARD_EXC( s->setUniformMatrix(name, matrix); )
+    GFX_GUARD_EXC( s->setUniformMatrix(name, matrix); );
 
     return Qnil;
 }
