@@ -28,6 +28,8 @@
 #include "glstate.h"
 #include "graphics.h"
 #include "customshader.h"
+#include "gl-util.h"
+#include "glstate.h"
 
 #include <SDL_timer.h>  // For SDL_GetTicks
 #include <SDL_rect.h>

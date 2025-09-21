@@ -27,8 +27,6 @@
 #include "disposable.h"
 #include "util.h"
 #include "sigslot/signal.hpp"
-#include "gl-util.h"
-#include "glstate.h"
 
 struct ViewportPrivate;
 class CustomShader;  // Forward declaration
