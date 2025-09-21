@@ -39,41 +39,23 @@ CustomShader::~CustomShader()
 
 void CustomShader::loadAndCompileShader(const char *fragmentPath)
 {
-    // Read fragment shader file
     std::string fragContents;
     try {
         readFile(fragmentPath, fragContents);
-
-        // Trim any leading whitespace or invisible characters
-        size_t start = 0;
-        while (start < fragContents.length() &&
-               (fragContents[start] == ' ' || fragContents[start] == '\t' ||
-                fragContents[start] == '\n' || fragContents[start] == '\r' ||
-                (unsigned char)fragContents[start] == 0xEF || // UTF-8 BOM
-                (unsigned char)fragContents[start] == 0xBB ||
-                (unsigned char)fragContents[start] == 0xBF)) {
-            start++;
-        }
-
-        if (start > 0) {
-            fragContents = fragContents.substr(start);
-        }
-
-        // Ensure the fragment shader starts with #version
-        if (fragContents.find("#version") != 0) {
-            throw Exception(Exception::MKXPError,
-                "Fragment shader must start with #version directive: %s", fragmentPath);
-        }
-
         fragmentSource = fragContents;
-
     } catch (const Exception &e) {
-        throw Exception(Exception::MKXPError,
-            "Failed to load fragment shader: %s - %s", fragmentPath, e.msg.c_str());
+        throw Exception(Exception::MKXPError, "Failed to load fragment shader: %s", fragmentPath);
     }
 
-    // Minimal vertex shader for custom shaders
-    const char* minimalVert =
+    // Don't use the parent's init method - compile directly
+    compileShadersDirect(fragContents);
+}
+
+void CustomShader::compileShadersDirect(const std::string& fragmentSource)
+{
+    GFX_LOCK;
+
+    const char* vertexSource =
         "#version 120\n"
         "attribute vec2 position;\n"
         "attribute vec2 texCoord;\n"
@@ -84,10 +66,48 @@ void CustomShader::loadAndCompileShader(const char *fragmentPath)
         "    v_texCoord = texCoord;\n"
         "}\n";
 
-    // Initialize the inherited Shader
-    init((const unsigned char*)minimalVert, strlen(minimalVert),
-         (const unsigned char*)fragContents.c_str(), fragContents.size(),
-         "minimal_custom", fragmentPath, "CustomShader");
+    GLint success;
+
+    // Compile vertex shader (bypass setupShaderSource)
+    const GLchar* vertSrc = vertexSource;
+    gl.ShaderSource(vertShader, 1, &vertSrc, NULL);
+    gl.CompileShader(vertShader);
+
+    gl.GetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        printShaderLog(vertShader);
+        throw Exception(Exception::MKXPError, "Vertex shader compilation failed");
+    }
+
+    // Compile fragment shader (bypass setupShaderSource)
+    const GLchar* fragSrc = fragmentSource.c_str();
+    gl.ShaderSource(fragShader, 1, &fragSrc, NULL);
+    gl.CompileShader(fragShader);
+
+    gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        printShaderLog(fragShader);
+        throw Exception(Exception::MKXPError, "Fragment shader compilation failed");
+    }
+
+    // Link program
+    gl.AttachShader(program, vertShader);
+    gl.AttachShader(program, fragShader);
+
+    // Set up standard attributes
+    gl.BindAttribLocation(program, 0, "position"); // Assuming Position = 0
+    gl.BindAttribLocation(program, 1, "texCoord"); // Assuming TexCoord = 1
+
+    gl.LinkProgram(program);
+
+    gl.GetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        printProgramLog(program);
+        throw Exception(Exception::MKXPError, "Shader program linking failed");
+    }
+
+    // Cache projection matrix uniform
+    u_projMat = gl.GetUniformLocation(program, "projMat");
 }
 
 void CustomShader::bind()
