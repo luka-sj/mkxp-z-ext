@@ -120,7 +120,7 @@ main_source = files(
     'eventthread.cpp',
     'settingsmenu.cpp',
     'sharedstate.cpp',
-    
+
     'audio/alstream.cpp',
     'audio/audio.cpp',
     'audio/audiostream.cpp',
@@ -136,6 +136,7 @@ main_source = files(
     'display/autotiles.cpp',
     'display/autotilesvx.cpp',
     'display/bitmap.cpp',
+    'display/customshader.cpp',
     'display/font.cpp',
     'display/graphics.cpp',
     'display/plane.cpp',
@@ -163,13 +164,13 @@ main_source = files(
 
     'util/iniconfig.cpp',
     'util/win-consoleutils.cpp',
-    
+
     'etc/etc.cpp',
     'etc/table.cpp',
 
     'filesystem/filesystem.cpp',
     'filesystem/filesystemImpl.cpp',
-    
+
     'input/input.cpp',
     'input/keybindings.cpp',
 
