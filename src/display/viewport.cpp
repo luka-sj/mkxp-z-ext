@@ -32,7 +32,6 @@
 
 #include <SDL_timer.h>  // For SDL_GetTicks
 #include <SDL_rect.h>
-#include <SDL_opengl.h>
 
 #include "sigslot/signal.hpp"
 
@@ -142,11 +141,6 @@ struct ViewportPrivate
         gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
         gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                  GL_TEXTURE_2D, fboTexture, 0);
-        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        if (status != GL_FRAMEBUFFER_COMPLETE)
-        {
-            printf("Viewport initFBO: FBO incomplete, status = 0x%X\n", status);
-        }
         // Unbind
         gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
 
