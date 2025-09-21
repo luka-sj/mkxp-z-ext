@@ -17,6 +17,7 @@ global_include_dirs += include_directories('.')
 binding_source = [files(
     'binding-mri.cpp',
     'binding-util.cpp',
+    'shader-binding.cpp',
     'table-binding.cpp',
     'etc-binding.cpp',
     'bitmap-binding.cpp',
