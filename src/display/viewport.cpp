@@ -52,6 +52,7 @@ struct ViewportPrivate
     GLuint shaderFBO;
     GLuint shaderTexture;
     int shaderWidth, shaderHeight;
+    Quad *renderQuad;  // Quad for rendering the texture
 
     IntRect screenRect;
     int isOnScreen;
@@ -68,6 +69,7 @@ struct ViewportPrivate
           shaderTexture(0),
           shaderWidth(0),
           shaderHeight(0),
+          renderQuad(0),
           isOnScreen(false)
     {
         rect->set(x, y, width, height);
@@ -88,6 +90,12 @@ struct ViewportPrivate
 		if (shaderTexture) {
 		    gl.DeleteTextures(1, &shaderTexture);
 		    shaderTexture = 0;
+		}
+
+		// Clean up render quad
+		if (renderQuad) {
+		    delete renderQuad;
+		    renderQuad = 0;
 		}
 	}
 
@@ -252,7 +260,7 @@ void Viewport::composite()
         if (!p->shaderFBO) {
             gl.GenFramebuffers(1, &p->shaderFBO);
             gl.GenTextures(1, &p->shaderTexture);
-            p->shaderWidth = p->shaderHeight = 0; // Force recreation
+            p->shaderWidth = p->shaderHeight = 0;
             printf("Created FBO and texture\n");
         }
 
@@ -276,23 +284,15 @@ void Viewport::composite()
 
         // Step 1: Render scene contents to the framebuffer texture
         gl.BindFramebuffer(GL_FRAMEBUFFER, p->shaderFBO);
-
-        // Clear the framebuffer
         gl.ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         gl.Clear(GL_COLOR_BUFFER_BIT);
-
-        // Set viewport for FBO rendering
         glState.viewport.pushSet(IntRect(0, 0, rect.w, rect.h));
 
-        // Render all child elements to the FBO (this fills our texture)
         printf("Rendering to FBO...\n");
         Scene::composite();
         printf("FBO render complete\n");
 
-        // Restore viewport
         glState.viewport.pop();
-
-        // Restore main framebuffer
         gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // Step 2: Render the texture using our custom shader
@@ -306,37 +306,22 @@ void Viewport::composite()
         p->shader->setTexSize(Vec2i(rect.w, rect.h));
         p->shader->setTranslation(Vec2i(0, 0));
 
-        // Bind the rendered texture to texture unit 0
+        // Bind the rendered texture
         gl.ActiveTexture(GL_TEXTURE0);
         gl.BindTexture(GL_TEXTURE_2D, p->shaderTexture);
         p->shader->setUniformI("tex", 0);
 
-        // For now, let's try a simple fallback without Quad class
-        // Draw two triangles to form a rectangle covering the viewport
+        // Use MKXP-Z's Quad class
+        if (!p->renderQuad) {
+            p->renderQuad = new Quad();
+        }
 
-        // Disable depth testing and enable blending
-        gl.Disable(GL_DEPTH_TEST);
-        gl.Enable(GL_BLEND);
-        gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        // Simple immediate mode rendering (for debugging)
-        gl.Begin(GL_TRIANGLES);
-
-        // First triangle
-        gl.TexCoord2f(0.0f, 0.0f); gl.Vertex2f(0.0f, 0.0f);
-        gl.TexCoord2f(1.0f, 0.0f); gl.Vertex2f((float)rect.w, 0.0f);
-        gl.TexCoord2f(0.0f, 1.0f); gl.Vertex2f(0.0f, (float)rect.h);
-
-        // Second triangle
-        gl.TexCoord2f(1.0f, 0.0f); gl.Vertex2f((float)rect.w, 0.0f);
-        gl.TexCoord2f(1.0f, 1.0f); gl.Vertex2f((float)rect.w, (float)rect.h);
-        gl.TexCoord2f(0.0f, 1.0f); gl.Vertex2f(0.0f, (float)rect.h);
-
-        gl.End();
+        FloatRect texRect(0, 0, 1, 1);
+        FloatRect posRect(0, 0, rect.w, rect.h);
+        p->renderQuad->setTexPosRect(texRect, posRect);
+        p->renderQuad->draw();
 
         p->shader->unbind();
-
-        // Restore texture binding
         gl.BindTexture(GL_TEXTURE_2D, 0);
 
         printf("Shader rendering complete\n");
