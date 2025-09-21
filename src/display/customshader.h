@@ -58,6 +58,9 @@ private:
     bool disposed;
     std::string fragmentSource;
 
+    void releaseResources();
+    const char *klassName() const { return "shader"; }
+
     void loadAndCompileShader(const char *fragmentPath);
 };
 

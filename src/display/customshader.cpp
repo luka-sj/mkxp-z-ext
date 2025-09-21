@@ -78,6 +78,25 @@ void CustomShader::unbind()
     Shader::unbind();
 }
 
+void CustomShader::releaseResources() {
+    GFX_LOCK;
+
+    if (program) {
+        glDeleteProgram(program);
+        program = 0;
+    }
+
+    if (vertShader) {
+        glDeleteShader(vertShader);
+        vertShader = 0;
+    }
+
+    if (fragShader) {
+        glDeleteShader(fragShader);
+        fragShader = 0;
+    }
+}
+
 void CustomShader::setUniformF(const char *name, float value)
 {
     if (disposed) return;

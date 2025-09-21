@@ -53,7 +53,7 @@ RB_METHOD(shaderSetFloat)
 
     CustomShader *s = getPrivateData<CustomShader>(self);
 
-    GUAGFX_GUARD_EXCRD_EXC( s->setUniformF(name, (float)value); );
+    GFX_GUARD_EXC( s->setUniformF(name, (float)value); );
 
     return Qnil;
 }
