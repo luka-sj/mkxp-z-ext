@@ -80,7 +80,7 @@ RB_METHOD(viewportGetShader)
     Viewport *v = getPrivateData<Viewport>(self);
     CustomShader *shader = 0;
 
-    GFX_GUARD_EXC( shader = v->getShader() );
+    GFX_GUARD_EXC( shader = v->getShader(); );
 
     if (!shader)
         return Qnil;
@@ -114,7 +114,7 @@ RB_METHOD(viewportSetShader)
         rb_iv_set(self, rb_intern("@shader"), Qnil);
     }
 
-    GFX_GUARD_EXC( v->setShader(shader) );
+    GFX_GUARD_EXC( v->setShader(shader); );
 
     return shaderObj;
 }
