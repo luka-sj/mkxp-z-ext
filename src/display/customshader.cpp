@@ -30,6 +30,9 @@ CustomShader::CustomShader(const char *fragmentPath)
     : Shader(), disposed(false)
 {
     loadAndCompileShader(fragmentPath);
+
+    // Initialize common uniforms that viewport system expects
+    initBaseUniforms();
 }
 
 CustomShader::~CustomShader()
@@ -47,7 +50,6 @@ void CustomShader::loadAndCompileShader(const char *fragmentPath)
         throw Exception(Exception::MKXPError, "Failed to load fragment shader: %s", fragmentPath);
     }
 
-    // Don't use the parent's init method - compile directly
     compileShadersDirect(fragContents);
 }
 
@@ -68,55 +70,95 @@ void CustomShader::compileShadersDirect(const std::string& fragmentSource)
 
     GLint success;
 
-    // Compile vertex shader (bypass setupShaderSource)
+    // Compile vertex shader
     const GLchar* vertSrc = vertexSource;
     gl.ShaderSource(vertShader, 1, &vertSrc, NULL);
     gl.CompileShader(vertShader);
 
     gl.GetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
     if (!success) {
-        throw Exception(Exception::MKXPError, "Vertex shader compilation failed");
+        GLint logLength;
+        gl.GetShaderiv(vertShader, GL_INFO_LOG_LENGTH, &logLength);
+        std::string log(logLength, '\0');
+        gl.GetShaderInfoLog(vertShader, log.size(), 0, &log[0]);
+        throw Exception(Exception::MKXPError, "Vertex shader compilation failed: %s", log.c_str());
     }
 
-    // Compile fragment shader (bypass setupShaderSource)
+    // Compile fragment shader
     const GLchar* fragSrc = fragmentSource.c_str();
     gl.ShaderSource(fragShader, 1, &fragSrc, NULL);
     gl.CompileShader(fragShader);
 
     gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
     if (!success) {
-        throw Exception(Exception::MKXPError, "Fragment shader compilation failed");
+        GLint logLength;
+        gl.GetShaderiv(fragShader, GL_INFO_LOG_LENGTH, &logLength);
+        std::string log(logLength, '\0');
+        gl.GetShaderInfoLog(fragShader, log.size(), 0, &log[0]);
+        throw Exception(Exception::MKXPError, "Fragment shader compilation failed: %s", log.c_str());
     }
 
     // Link program
     gl.AttachShader(program, vertShader);
     gl.AttachShader(program, fragShader);
 
-    // Set up standard attributes
-    gl.BindAttribLocation(program, 0, "position"); // Assuming Position = 0
-    gl.BindAttribLocation(program, 1, "texCoord"); // Assuming TexCoord = 1
+    // Bind standard attribute locations
+    gl.BindAttribLocation(program, Position, "position");
+    gl.BindAttribLocation(program, TexCoord, "texCoord");
+    gl.BindAttribLocation(program, Color, "color");
 
     gl.LinkProgram(program);
 
     gl.GetProgramiv(program, GL_LINK_STATUS, &success);
     if (!success) {
-        throw Exception(Exception::MKXPError, "Shader program linking failed");
+        GLint logLength;
+        gl.GetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+        std::string log(logLength, '\0');
+        gl.GetProgramInfoLog(program, log.size(), 0, &log[0]);
+        throw Exception(Exception::MKXPError, "Shader program linking failed: %s", log.c_str());
     }
+}
 
-    // Cache projection matrix uniform
+void CustomShader::initBaseUniforms()
+{
+    // Cache uniform locations that the viewport system might need
     u_projMat = gl.GetUniformLocation(program, "projMat");
+    u_texSizeInv = gl.GetUniformLocation(program, "texSizeInv");
+    u_translation = gl.GetUniformLocation(program, "translation");
+
+    // Custom shader uniforms
+    u_resolution = gl.GetUniformLocation(program, "resolution");
+    u_time = gl.GetUniformLocation(program, "time");
+    u_texture = gl.GetUniformLocation(program, "texture");
 }
 
 void CustomShader::bind()
 {
     if (disposed) return;
     Shader::bind();
+
+    // Set the main texture to unit 0
+    if (u_texture != -1) {
+        gl.Uniform1i(u_texture, 0);
+    }
 }
 
 void CustomShader::unbind()
 {
     if (disposed) return;
     Shader::unbind();
+}
+
+void CustomShader::setTexSize(const Vec2i &value)
+{
+    if (disposed || u_texSizeInv == -1) return;
+    gl.Uniform2f(u_texSizeInv, 1.f / value.x, 1.f / value.y);
+}
+
+void CustomShader::setTranslation(const Vec2i &value)
+{
+    if (disposed || u_translation == -1) return;
+    gl.Uniform2f(u_translation, value.x, value.y);
 }
 
 void CustomShader::releaseResources() {
@@ -133,6 +175,27 @@ void CustomShader::releaseResources() {
     if (fragShader) {
         gl.DeleteShader(fragShader);
     }
+}
+
+void CustomShader::applyViewportProj()
+{
+    if (disposed || u_projMat == -1) return;
+
+    const IntRect &vp = glState.viewport.get();
+
+    // Create orthographic projection matrix (similar to ShaderBase::GLProjMat::apply)
+    const float a = 2.f / vp.w;
+    const float b = 2.f / vp.h;
+    const float c = -2.f;
+
+    GLfloat mat[16] = {
+         a,  0,  0,  0,
+         0,  b,  0,  0,
+         0,  0,  c,  0,
+        -1, -1, -1,  1
+    };
+
+    gl.UniformMatrix4fv(u_projMat, 1, GL_FALSE, mat);
 }
 
 void CustomShader::setUniformF(const char *name, float value)
@@ -182,12 +245,14 @@ void CustomShader::setUniformMatrix(const char *name, const float *matrix)
 
 void CustomShader::setResolution(const Vec2 &value)
 {
-    setUniformVec2("resolution", value);
+    if (disposed || u_resolution == -1) return;
+    gl.Uniform2f(u_resolution, value.x, value.y);
 }
 
 void CustomShader::setTime(float value)
 {
-    setUniformF("time", value);
+    if (disposed || u_time == -1) return;
+    gl.Uniform1f(u_time, value);
 }
 
 GLuint CustomShader::getProgram() const

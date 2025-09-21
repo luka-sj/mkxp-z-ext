@@ -67,6 +67,8 @@ struct ViewportPrivate
 	~ViewportPrivate()
 	{
 		rectCon.disconnect();
+		// Clean up shader reference (don't delete - it's managed elsewhere)
+		shader = 0;
 	}
 
 	void onRectChange()
@@ -217,12 +219,23 @@ void Viewport::composite()
     // Apply custom shader if present
     if (p->shader && !p->shader->isDisposed())
     {
+        // Store current GL state
+        GLint currentProgram;
+        gl.GetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+
         p->shader->bind();
+
+        // Set viewport projection matrix
+        p->shader->applyViewportProj();
 
         // Set built-in uniforms
         IntRect rect = p->rect->toIntRect();
         p->shader->setResolution(Vec2((float)rect.w, (float)rect.h));
         p->shader->setTime(SDL_GetTicks() / 1000.0f);
+
+        // Set texture size if available
+        p->shader->setTexSize(Vec2i(rect.w, rect.h));
+        p->shader->setTranslation(Vec2i(0, 0));
     }
 
     Scene::composite();

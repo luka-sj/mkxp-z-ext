@@ -26,6 +26,7 @@
 #include "flashable.h"
 #include "disposable.h"
 #include "util.h"
+#include "sigslot/signal.hpp"
 
 struct ViewportPrivate;
 class CustomShader;  // Forward declaration
@@ -54,12 +55,10 @@ public:
 
 private:
     void initViewport(int x, int y, int width, int height);
-    void geometryChanged();
 
     void composite();
     void draw();
     void onGeometryChange(const Geometry &);
-    bool isEffectiveViewport(Rect *&, Color *&, Tone *&) const;
 
     void releaseResources();
     const char *klassName() const { return "viewport"; }
@@ -72,7 +71,6 @@ private:
     IntruListLink<Scene> sceneLink;
 };
 
-// ViewportElement remains unchanged...
 class ViewportElement : public SceneElement
 {
 public:
@@ -87,7 +85,6 @@ protected:
 private:
     Viewport *m_viewport;
     sigslot::connection viewportDispCon;
-    sigslot::connection viewportElementDispCon;
     void viewportElementDisposal();
 };
 
