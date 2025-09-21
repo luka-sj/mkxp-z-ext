@@ -57,11 +57,13 @@ public:
 private:
     bool disposed;
     std::string fragmentSource;
+    GLint u_projMat;
 
     void releaseResources();
     const char *klassName() const { return "shader"; }
 
     void loadAndCompileShader(const char *fragmentPath);
+    void compileShadersDirect(const std::string& fragmentSource); // Add this line
 };
 
 #endif // CUSTOMSHADER_H
