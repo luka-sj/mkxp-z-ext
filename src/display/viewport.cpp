@@ -24,8 +24,10 @@
 #include "sharedstate.h"
 #include "etc.h"
 #include "util.h"
-#include "gl-util.h"
+#include "quad.h"
 #include "glstate.h"
+#include "gl-fun.h"
+#include "fbo.h"
 #include "graphics.h"
 #include "customshader.h"
 
@@ -46,6 +48,7 @@ struct ViewportPrivate
     Tone *tone;
 
     CustomShader *shader;
+    TEXFBO *shaderFBO;  // Add framebuffer for shader rendering
 
     IntRect screenRect;
     int isOnScreen;
@@ -58,6 +61,7 @@ struct ViewportPrivate
           color(&tmp.color),
           tone(&tmp.tone),
           shader(0),
+          shaderFBO(0),  // Initialize FBO to null
           isOnScreen(false)
     {
         rect->set(x, y, width, height);
@@ -67,7 +71,14 @@ struct ViewportPrivate
 	~ViewportPrivate()
 	{
 		rectCon.disconnect();
+		// Clean up shader reference (don't delete - it's managed elsewhere)
 		shader = 0;
+
+		// Clean up FBO
+		if (shaderFBO) {
+		    delete shaderFBO;
+		    shaderFBO = 0;
+		}
 	}
 
 	void onRectChange()
@@ -221,35 +232,74 @@ void Viewport::composite()
     glState.scissorTest.pushSet(true);
     glState.scissorBox.pushSet(p->rect->toIntRect());
 
-    // If shader is present, render to the FBO first
+    // If we have a custom shader, render to texture first
     if (p->shader && !p->shader->isDisposed())
     {
+        IntRect rect = p->rect->toIntRect();
+
+        // Create or get existing framebuffer for this viewport
+        if (!p->shaderFBO) {
+            p->shaderFBO = new TEXFBO();
+            p->shaderFBO->init(rect.w, rect.h);
+        }
+
+        // Ensure FBO is the right size
+        if (p->shaderFBO->width != rect.w || p->shaderFBO->height != rect.h) {
+            p->shaderFBO->release();
+            p->shaderFBO->init(rect.w, rect.h);
+        }
+
+        // Step 1: Render scene contents to the framebuffer texture
+        FBO::bind(p->shaderFBO->fbo);
+
+        // Clear the framebuffer
+        gl.ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        gl.Clear(GL_COLOR_BUFFER_BIT);
+
+        // Set viewport for FBO rendering
+        glState.viewport.pushSet(IntRect(0, 0, rect.w, rect.h));
+
+        // Render all child elements to the FBO (this fills our texture)
+        Scene::composite();
+
+        // Restore viewport
+        glState.viewport.pop();
+
+        // Restore main framebuffer
+        FBO::unbind();
+
+        // Step 2: Render the texture using our custom shader
         p->shader->bind();
 
-        // Set viewport projection matrix
+        // Set shader uniforms
         p->shader->applyViewportProj();
-
-        // Set built-in uniforms
-        IntRect rect = p->rect->toIntRect();
         p->shader->setResolution(Vec2((float)rect.w, (float)rect.h));
         p->shader->setTime(SDL_GetTicks() / 1000.0f);
-
-        // Set texture size if available
         p->shader->setTexSize(Vec2i(rect.w, rect.h));
         p->shader->setTranslation(Vec2i(0, 0));
 
-        // Debug: Print shader info
-        printf("Shader applied - Resolution: %fx%f, Time: %f\n",
-                (float)rect.w, (float)rect.h, SDL_GetTicks() / 1000.0f);
+        // Bind the rendered texture to texture unit 0
+        gl.ActiveTexture(GL_TEXTURE0);
+        gl.BindTexture(GL_TEXTURE_2D, p->shaderFBO->tex);
+        p->shader->setUniformI("tex", 0);
 
-        // Render everything into FBO
-        Scene::composite();
+        // Create a quad that covers the viewport area
+        static Quad quad;
+        FloatRect texRect(0, 0, 1, 1); // Full texture coordinates
+        FloatRect posRect(0, 0, rect.w, rect.h); // Viewport size
+        quad.setTexPosRect(texRect, posRect);
+
+        // Draw the textured quad with our shader applied
+        quad.draw();
 
         p->shader->unbind();
+
+        // Restore texture binding
+        gl.BindTexture(GL_TEXTURE_2D, 0);
     }
     else
     {
-        // No shader: just render normally
+        // Standard rendering without shader
         Scene::composite();
     }
 
