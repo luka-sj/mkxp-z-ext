@@ -78,17 +78,19 @@ RB_METHOD(viewportGetShader)
     RB_UNUSED_PARAM;
 
     Viewport *v = getPrivateData<Viewport>(self);
+    CustomShader *shader = 0;
 
-    GFX_GUARD_EXC( CustomShader *shader = v->getShader(); );
+    GFX_GUARD_EXC( shader = v->getShader(); );
 
     if (!shader)
         return Qnil;
 
-#if RAPI_FULL > 187
-    return getPrivateDataObj(shader, CustomShaderType);
-#else
-    return getPrivateDataObj(shader, CustomShaderAllocate);
-#endif
+    // Find the existing Ruby object for this shader
+    VALUE shaderClass = rb_const_get(rb_cObject, rb_intern("Shader"));
+    VALUE shaderObj = rb_obj_alloc(shaderClass);
+    setPrivateData(shaderObj, shader);
+
+    return shaderObj;
 }
 
 RB_METHOD(viewportSetShader)
