@@ -27,6 +27,8 @@
 #include "disposable.h"
 #include "util.h"
 #include "sigslot/signal.hpp"
+#include "gl-util.h"
+#include "glstate.h"
 
 struct ViewportPrivate;
 class CustomShader;  // Forward declaration
@@ -50,6 +52,11 @@ public:
     // Add shader support
     void setShader(CustomShader *shader);
     CustomShader *getShader() const;
+    GLuint fbo = 0;
+    GLuint fboTexture = 0;
+    int fboWidth = 0;
+    int fboHeight = 0;
+    bool fboInitialized = false;
 
     void initDynAttribs();
 
