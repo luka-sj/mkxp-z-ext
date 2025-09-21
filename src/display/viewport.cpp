@@ -25,14 +25,14 @@
 #include "etc.h"
 #include "util.h"
 #include "quad.h"
+#include "gl-util.h"
 #include "glstate.h"
 #include "graphics.h"
 #include "customshader.h"
-#include "gl-util.h"
-#include "glstate.h"
 
 #include <SDL_timer.h>  // For SDL_GetTicks
 #include <SDL_rect.h>
+#include <SDL_opengl.h>
 
 #include "sigslot/signal.hpp"
 
