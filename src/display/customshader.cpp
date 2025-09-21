@@ -75,7 +75,6 @@ void CustomShader::compileShadersDirect(const std::string& fragmentSource)
 
     gl.GetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
     if (!success) {
-        printShaderLog(vertShader);
         throw Exception(Exception::MKXPError, "Vertex shader compilation failed");
     }
 
@@ -86,7 +85,6 @@ void CustomShader::compileShadersDirect(const std::string& fragmentSource)
 
     gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
     if (!success) {
-        printShaderLog(fragShader);
         throw Exception(Exception::MKXPError, "Fragment shader compilation failed");
     }
 
@@ -102,7 +100,6 @@ void CustomShader::compileShadersDirect(const std::string& fragmentSource)
 
     gl.GetProgramiv(program, GL_LINK_STATUS, &success);
     if (!success) {
-        printProgramLog(program);
         throw Exception(Exception::MKXPError, "Shader program linking failed");
     }
 
