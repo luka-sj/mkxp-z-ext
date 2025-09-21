@@ -80,19 +80,6 @@ RB_METHOD(shaderSetVec2)
     return Qnil;
 }
 
-RB_METHOD(shaderSetVec3)
-{
-    const char *name;
-    double x, y, z;
-    rb_get_args(argc, argv, "zfff", &name, &x, &y, &z RB_ARG_END);
-
-    CustomShader *s = getPrivateData<CustomShader>(self);
-
-    GUARD_EXC( s->setUniformVec3(name, Vec3((float)x, (float)y, (float)z)); )
-
-    return Qnil;
-}
-
 RB_METHOD(shaderSetVec4)
 {
     const char *name;

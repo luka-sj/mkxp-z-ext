@@ -84,15 +84,6 @@ void CustomShader::setUniformVec2(const char *name, const Vec2 &value)
     }
 }
 
-void CustomShader::setUniformVec3(const char *name, const Vec3 &value)
-{
-    if (disposed || !shader) return;
-    GLint loc = gl.GetUniformLocation(shader->program, name);
-    if (loc != -1) {
-        gl.Uniform3f(loc, value.x, value.y, value.z);
-    }
-}
-
 void CustomShader::setUniformVec4(const char *name, const Vec4 &value)
 {
     if (disposed || !shader) return;

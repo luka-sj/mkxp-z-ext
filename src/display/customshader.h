@@ -19,7 +19,6 @@ public:
     void setUniformF(const char *name, float value);
     void setUniformI(const char *name, int value);
     void setUniformVec2(const char *name, const Vec2 &value);
-    void setUniformVec3(const char *name, const Vec3 &value);
     void setUniformVec4(const char *name, const Vec4 &value);
     void setUniformMatrix(const char *name, const float *matrix);
 
