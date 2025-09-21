@@ -43,9 +43,33 @@ void CustomShader::loadAndCompileShader(const char *fragmentPath)
     std::string fragContents;
     try {
         readFile(fragmentPath, fragContents);
+
+        // Trim any leading whitespace or invisible characters
+        size_t start = 0;
+        while (start < fragContents.length() &&
+               (fragContents[start] == ' ' || fragContents[start] == '\t' ||
+                fragContents[start] == '\n' || fragContents[start] == '\r' ||
+                (unsigned char)fragContents[start] == 0xEF || // UTF-8 BOM
+                (unsigned char)fragContents[start] == 0xBB ||
+                (unsigned char)fragContents[start] == 0xBF)) {
+            start++;
+        }
+
+        if (start > 0) {
+            fragContents = fragContents.substr(start);
+        }
+
+        // Ensure the fragment shader starts with #version
+        if (fragContents.find("#version") != 0) {
+            throw Exception(Exception::MKXPError,
+                "Fragment shader must start with #version directive: %s", fragmentPath);
+        }
+
         fragmentSource = fragContents;
+
     } catch (const Exception &e) {
-        throw Exception(Exception::MKXPError, "Failed to load fragment shader: %s", fragmentPath);
+        throw Exception(Exception::MKXPError,
+            "Failed to load fragment shader: %s - %s", fragmentPath, e.msg.c_str());
     }
 
     // Minimal vertex shader for custom shaders
