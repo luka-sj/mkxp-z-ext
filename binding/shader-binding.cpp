@@ -25,7 +25,11 @@
 #include "binding-types.h"
 #include "exception.h"
 
-DEF_TYPE_CUSTOMNAME(CustomShader, Shader);
+#if RAPI_FULL > 187
+DEF_TYPE(CustomShader);
+#else
+DEF_ALLOCFUNC(CustomShader);
+#endif
 
 RB_METHOD(shaderInitialize)
 {
@@ -116,7 +120,11 @@ RB_METHOD(shaderSetMatrix)
 void shaderBindingInit()
 {
     VALUE klass = rb_define_class("Shader", rb_cObject);
-    rb_define_alloc_func(klass, classAllocate<&ShaderType>);
+#if RAPI_FULL > 187
+    rb_define_alloc_func(klass, classAllocate<&CustomShaderType>);
+#else
+    rb_define_alloc_func(klass, CustomShaderAllocate);
+#endif
 
     disposableBindingInit<CustomShader>(klass);
 
@@ -124,7 +132,6 @@ void shaderBindingInit()
     _rb_define_method(klass, "set_float", shaderSetFloat);
     _rb_define_method(klass, "set_int", shaderSetInt);
     _rb_define_method(klass, "set_vec2", shaderSetVec2);
-    _rb_define_method(klass, "set_vec3", shaderSetVec3);
     _rb_define_method(klass, "set_vec4", shaderSetVec4);
     _rb_define_method(klass, "set_matrix", shaderSetMatrix);
 }

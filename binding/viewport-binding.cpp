@@ -34,9 +34,6 @@ DEF_TYPE(Viewport);
 DEF_ALLOCFUNC(Viewport);
 #endif
 
-// Add the CustomShader type definition (you'll need this in binding-types.h or here)
-DEF_TYPE_CUSTOMNAME(CustomShader, Shader);
-
 RB_METHOD(viewportInitialize) {
     Viewport *v;
 
@@ -104,7 +101,7 @@ RB_METHOD(viewportSetShader)
 
     if (!NIL_P(shaderObj))
     {
-        shader = getPrivateDataCheck<CustomShader>(shaderObj, ShaderType);
+        shader = getPrivateDataCheck<CustomShader>(shaderObj, CustomShaderType);
     }
 
     GFX_GUARD_EXC( v->setShader(shader); );
