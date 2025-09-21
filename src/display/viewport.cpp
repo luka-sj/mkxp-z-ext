@@ -45,19 +45,25 @@ struct ViewportPrivate
     Color *color;
     Tone *tone;
 
-    CustomShader *shader;  // Add this line
+    CustomShader *shader;
 
     IntRect screenRect;
     int isOnScreen;
 
     EtcTemps tmp;
 
+    GLuint fbo = 0;
+    GLuint fboTexture = 0;
+    int fboWidth = 0;
+    int fboHeight = 0;
+    bool fboInitialized = false;
+
     ViewportPrivate(int x, int y, int width, int height, Viewport *self)
         : self(self),
           rect(&tmp.rect),
           color(&tmp.color),
           tone(&tmp.tone),
-          shader(0),  // Initialize shader to null
+          shader(0),
           isOnScreen(false)
     {
         rect->set(x, y, width, height);
@@ -67,7 +73,6 @@ struct ViewportPrivate
 	~ViewportPrivate()
 	{
 		rectCon.disconnect();
-		// Clean up shader reference (don't delete - it's managed elsewhere)
 		shader = 0;
 	}
 
@@ -304,6 +309,9 @@ void Viewport::composite()
     // If shader is present, render to the FBO first
     if (p->shader && !p->shader->isDisposed())
     {
+        IntRect rect = p->rect->toIntRect();
+        int w = rect.w;
+        int h = rect.h;
         p->initFBO(w, h);  // ensure FBO matches size
 
         // 1) bind FBO and render scene

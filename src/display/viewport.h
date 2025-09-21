@@ -52,11 +52,6 @@ public:
     // Add shader support
     void setShader(CustomShader *shader);
     CustomShader *getShader() const;
-    GLuint fbo = 0;
-    GLuint fboTexture = 0;
-    int fboWidth = 0;
-    int fboHeight = 0;
-    bool fboInitialized = false;
 
     void initDynAttribs();
 
