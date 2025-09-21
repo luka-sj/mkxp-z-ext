@@ -86,7 +86,7 @@ RB_METHOD(viewportGetShader)
         return Qnil;
 
     // Return the stored Ruby object if it exists
-    VALUE stored = rb_iv_get(self, rb_intern("@shader"));
+    VALUE stored = rb_iv_get(self, "@shader");
     if (!NIL_P(stored))
         return stored;
 
@@ -109,9 +109,9 @@ RB_METHOD(viewportSetShader)
         shader = getPrivateData<CustomShader>(shaderObj);
 
         // Store the Ruby object reference
-        rb_iv_set(self, rb_intern("@shader"), shaderObj);
+        rb_iv_set(self, "@shader", shaderObj);
     } else {
-        rb_iv_set(self, rb_intern("@shader"), Qnil);
+        rb_iv_set(self, "@shader", Qnil);
     }
 
     GFX_GUARD_EXC( v->setShader(shader); );
