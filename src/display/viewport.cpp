@@ -225,10 +225,6 @@ void Viewport::composite()
     // Apply custom shader if present
     if (p->shader && !p->shader->isDisposed())
     {
-        // Store current GL state
-        GLint currentProgram;
-        gl.GetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-
         p->shader->bind();
 
         // Set viewport projection matrix
@@ -242,6 +238,10 @@ void Viewport::composite()
         // Set texture size if available
         p->shader->setTexSize(Vec2i(rect.w, rect.h));
         p->shader->setTranslation(Vec2i(0, 0));
+
+        // Debug: Print shader info
+        printf("Shader applied - Resolution: %fx%f, Time: %f\n",
+               (float)rect.w, (float)rect.h, SDL_GetTicks() / 1000.0f);
     }
 
     Scene::composite();

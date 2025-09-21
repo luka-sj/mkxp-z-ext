@@ -80,17 +80,17 @@ RB_METHOD(viewportGetShader)
     Viewport *v = getPrivateData<Viewport>(self);
     CustomShader *shader = 0;
 
-    GFX_GUARD_EXC( shader = v->getShader(); );
+    GFX_GUARD_EXC( shader = v->getShader() );
 
     if (!shader)
         return Qnil;
 
-    // Find the existing Ruby object for this shader
-    VALUE shaderClass = rb_const_get(rb_cObject, rb_intern("Shader"));
-    VALUE shaderObj = rb_obj_alloc(shaderClass);
-    setPrivateData(shaderObj, shader);
+    // Return the stored Ruby object if it exists
+    VALUE stored = rb_iv_get(self, rb_intern("@shader"));
+    if (!NIL_P(stored))
+        return stored;
 
-    return shaderObj;
+    return Qnil;
 }
 
 RB_METHOD(viewportSetShader)
@@ -102,15 +102,19 @@ RB_METHOD(viewportSetShader)
     rb_get_args(argc, argv, "o", &shaderObj RB_ARG_END);
 
     if (!NIL_P(shaderObj)) {
-        // Add type checking to prevent crashes
         if (!rb_obj_is_kind_of(shaderObj, rb_const_get(rb_cObject, rb_intern("Shader")))) {
             rb_raise(rb_eTypeError, "Expected Shader object");
             return Qnil;
         }
         shader = getPrivateData<CustomShader>(shaderObj);
+
+        // Store the Ruby object reference
+        rb_iv_set(self, rb_intern("@shader"), shaderObj);
+    } else {
+        rb_iv_set(self, rb_intern("@shader"), Qnil);
     }
 
-    GFX_GUARD_EXC( v->setShader(shader); );
+    GFX_GUARD_EXC( v->setShader(shader) );
 
     return shaderObj;
 }
