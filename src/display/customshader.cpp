@@ -82,18 +82,15 @@ void CustomShader::releaseResources() {
     GFX_LOCK;
 
     if (program) {
-        glDeleteProgram(program);
-        program = 0;
+        gl.DeleteProgram(program);
     }
 
     if (vertShader) {
-        glDeleteShader(vertShader);
-        vertShader = 0;
+        gl.DeleteShader(vertShader);
     }
 
     if (fragShader) {
-        glDeleteShader(fragShader);
-        fragShader = 0;
+        gl.DeleteShader(fragShader);
     }
 }
 
