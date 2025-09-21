@@ -24,7 +24,6 @@
 #include "sharedstate.h"
 #include "etc.h"
 #include "util.h"
-#include "quad.h"
 #include "gl-util.h"
 #include "glstate.h"
 #include "graphics.h"
@@ -52,12 +51,6 @@ struct ViewportPrivate
     int isOnScreen;
 
     EtcTemps tmp;
-
-    GLuint fbo = 0;
-    GLuint fboTexture = 0;
-    int fboWidth = 0;
-    int fboHeight = 0;
-    bool fboInitialized = false;
 
     ViewportPrivate(int x, int y, int width, int height, Viewport *self)
         : self(self),
@@ -110,55 +103,6 @@ struct ViewportPrivate
 
 		return (rectEffective && colorToneEffective && isOnScreen);
 	}
-
-    // Initialize or reinitialize FBO with given width/height
-    void initFBO(int width, int height)
-    {
-        if (width <= 0 || height <= 0) return;
-        // If already initialized and size matches, skip
-        if (fboInitialized && fboWidth == width && fboHeight == height)
-            return;
-        // Clean up old if any
-        if (fboInitialized)
-        {
-            gl.DeleteTextures(1, &fboTexture);
-            gl.DeleteFramebuffers(1, &fbo);
-        }
-        fboWidth = width;
-        fboHeight = height;
-
-        gl.GenTextures(1, &fboTexture);
-        gl.BindTexture(GL_TEXTURE_2D, fboTexture);
-        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        // Optional wrap
-        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
-                      GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-
-        gl.GenFramebuffers(1, &fbo);
-        gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
-        gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                                 GL_TEXTURE_2D, fboTexture, 0);
-        // Unbind
-        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        fboInitialized = true;
-    }
-
-    void releaseFBO()
-    {
-        if (!fboInitialized) return;
-        if (fboTexture)
-            gl.DeleteTextures(1, &fboTexture);
-        if (fbo)
-            gl.DeleteFramebuffers(1, &fbo);
-        fboTexture = 0;
-        fbo = 0;
-        fboWidth = fboHeight = 0;
-        fboInitialized = false;
-    }
 };
 
 Viewport::Viewport(int x, int y, int width, int height)
@@ -192,14 +136,10 @@ void Viewport::initViewport(int x, int y, int width, int height)
 
 	/* Handle parent geometry */
 	onGeometryChange(scene->getGeometry());
-
-	/* Initialize frame buffer */
-	p->initFBO(width, height);
 }
 
 Viewport::~Viewport()
 {
-    p->releaseFBO();
 	dispose();
 }
 
@@ -216,27 +156,6 @@ DEF_ATTR_RD_SIMPLE(Viewport, OY,   int,   geometry.orig.y)
 DEF_ATTR_SIMPLE(Viewport, Rect,  Rect&,  *p->rect)
 DEF_ATTR_SIMPLE(Viewport, Color, Color&, *p->color)
 DEF_ATTR_SIMPLE(Viewport, Tone,  Tone&,  *p->tone)
-
-static void drawTexturedQuad(int width, int height)
-{
-    // Construct a quad
-    Quad quad;
-
-    // Position: from (0, 0) to (width, height)
-    FloatRect posRect(0.0f, 0.0f, (float)width, (float)height);
-
-    // Texture coordinates: (0, 0) to (1, 1)
-    FloatRect texRect(0.0f, 0.0f, 1.0f, 1.0f);
-
-    quad.setTexPosRect(texRect, posRect);
-
-    // Use full white (no tint)
-    quad.setColor(Vec4(1.0f, 1.0f, 1.0f, 1.0f));
-
-    // Draw
-    quad.draw();
-}
-
 
 void Viewport::setOX(int value)
 {
@@ -305,40 +224,26 @@ void Viewport::composite()
     // If shader is present, render to the FBO first
     if (p->shader && !p->shader->isDisposed())
     {
-        IntRect rect = p->rect->toIntRect();
-        int w = rect.w;
-        int h = rect.h;
-        p->initFBO(w, h);  // ensure FBO matches size
+        p->shader->bind();
 
-        // 1) bind FBO and render scene
-        gl.BindFramebuffer(GL_FRAMEBUFFER, p->fbo);
-        gl.Viewport(0, 0, w, h);
-        gl.ClearColor(0, 0, 0, 0);
-        gl.Clear(GL_COLOR_BUFFER_BIT);
+        // Set viewport projection matrix
+        p->shader->applyViewportProj();
+
+        // Set built-in uniforms
+        IntRect rect = p->rect->toIntRect();
+        p->shader->setResolution(Vec2((float)rect.w, (float)rect.h));
+        p->shader->setTime(SDL_GetTicks() / 1000.0f);
+
+        // Set texture size if available
+        p->shader->setTexSize(Vec2i(rect.w, rect.h));
+        p->shader->setTranslation(Vec2i(0, 0));
+
+        // Debug: Print shader info
+        printf("Shader applied - Resolution: %fx%f, Time: %f\n",
+                (float)rect.w, (float)rect.h, SDL_GetTicks() / 1000.0f);
 
         // Render everything into FBO
         Scene::composite();
-
-        // 2) unbind FBO, restore viewport for rendering to screen
-        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-        // Set viewport to match the viewport's position and size on screen
-        gl.Viewport(rect.x, rect.y, w, h);
-
-        // 3) apply shader and draw the textured quad from FBO
-        p->shader->bind();
-        p->shader->applyViewportProj();
-        p->shader->setResolution(Vec2((float)w, (float)h));
-        p->shader->setTime(SDL_GetTicks() / 1000.0f);
-        p->shader->setTexSize(Vec2i(w, h));
-        p->shader->setTranslation(Vec2i(0, 0));
-
-        // Bind the FBO texture
-        gl.ActiveTexture(GL_TEXTURE0);
-        gl.BindTexture(GL_TEXTURE_2D, p->fboTexture);
-
-        // Draw quad covering the viewport rect
-        // You need a helper for drawing a textured quad at (0,0)-(w,h)
-        drawTexturedQuad(w, h);
 
         p->shader->unbind();
     }
