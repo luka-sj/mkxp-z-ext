@@ -268,10 +268,6 @@ void Viewport::composite()
 
             gl.BindFramebuffer(GL_FRAMEBUFFER, p->shaderFBO);
             gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, p->shaderTexture, 0);
-
-            if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-                printf("Framebuffer not complete!\n");
-            }
         }
 
         // Step 1: Render scene contents to the framebuffer texture
