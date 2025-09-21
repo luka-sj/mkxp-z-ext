@@ -42,6 +42,9 @@ public:
     void dispose();
     bool isDisposed() const;
 
+    void releaseResources();
+    const char *klassName() const { return "shader"; }
+
 private:
     void loadAndCompileShader(const char *fragmentPath);
     void compileShadersDirect(const std::string& fragmentSource);

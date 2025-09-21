@@ -161,6 +161,22 @@ void CustomShader::setTranslation(const Vec2i &value)
     gl.Uniform2f(u_translation, value.x, value.y);
 }
 
+void CustomShader::releaseResources() {
+    GFX_LOCK;
+
+    if (program) {
+        gl.DeleteProgram(program);
+    }
+
+    if (vertShader) {
+        gl.DeleteShader(vertShader);
+    }
+
+    if (fragShader) {
+        gl.DeleteShader(fragShader);
+    }
+}
+
 void CustomShader::applyViewportProj()
 {
     if (disposed || u_projMat == -1) return;
