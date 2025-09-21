@@ -25,9 +25,8 @@
 #include "etc.h"
 #include "util.h"
 #include "quad.h"
-#include "glstate.h"
 #include "gl-fun.h"
-#include "fbo.h"
+#include "glstate.h"
 #include "graphics.h"
 #include "customshader.h"
 
@@ -48,7 +47,11 @@ struct ViewportPrivate
     Tone *tone;
 
     CustomShader *shader;
-    TEXFBO *shaderFBO;  // Add framebuffer for shader rendering
+
+    // Framebuffer for shader rendering
+    GLuint shaderFBO;
+    GLuint shaderTexture;
+    int shaderWidth, shaderHeight;
 
     IntRect screenRect;
     int isOnScreen;
@@ -61,7 +64,10 @@ struct ViewportPrivate
           color(&tmp.color),
           tone(&tmp.tone),
           shader(0),
-          shaderFBO(0),  // Initialize FBO to null
+          shaderFBO(0),
+          shaderTexture(0),
+          shaderWidth(0),
+          shaderHeight(0),
           isOnScreen(false)
     {
         rect->set(x, y, width, height);
@@ -74,10 +80,14 @@ struct ViewportPrivate
 		// Clean up shader reference (don't delete - it's managed elsewhere)
 		shader = 0;
 
-		// Clean up FBO
+		// Clean up framebuffer resources
 		if (shaderFBO) {
-		    delete shaderFBO;
+		    gl.DeleteFramebuffers(1, &shaderFBO);
 		    shaderFBO = 0;
+		}
+		if (shaderTexture) {
+		    gl.DeleteTextures(1, &shaderTexture);
+		    shaderTexture = 0;
 		}
 	}
 
@@ -237,20 +247,35 @@ void Viewport::composite()
     {
         IntRect rect = p->rect->toIntRect();
 
-        // Create or get existing framebuffer for this viewport
+        // Create framebuffer and texture if needed
         if (!p->shaderFBO) {
-            p->shaderFBO = new TEXFBO();
-            p->shaderFBO->init(rect.w, rect.h);
+            gl.GenFramebuffers(1, &p->shaderFBO);
+            gl.GenTextures(1, &p->shaderTexture);
+            p->shaderWidth = p->shaderHeight = 0; // Force recreation
         }
 
-        // Ensure FBO is the right size
-        if (p->shaderFBO->width != rect.w || p->shaderFBO->height != rect.h) {
-            p->shaderFBO->release();
-            p->shaderFBO->init(rect.w, rect.h);
+        // Recreate texture if size changed
+        if (p->shaderWidth != rect.w || p->shaderHeight != rect.h) {
+            p->shaderWidth = rect.w;
+            p->shaderHeight = rect.h;
+
+            gl.BindTexture(GL_TEXTURE_2D, p->shaderTexture);
+            gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rect.w, rect.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            gl.BindFramebuffer(GL_FRAMEBUFFER, p->shaderFBO);
+            gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, p->shaderTexture, 0);
+
+            if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                printf("Framebuffer not complete!\n");
+            }
         }
 
         // Step 1: Render scene contents to the framebuffer texture
-        FBO::bind(p->shaderFBO->fbo);
+        gl.BindFramebuffer(GL_FRAMEBUFFER, p->shaderFBO);
 
         // Clear the framebuffer
         gl.ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -266,7 +291,7 @@ void Viewport::composite()
         glState.viewport.pop();
 
         // Restore main framebuffer
-        FBO::unbind();
+        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // Step 2: Render the texture using our custom shader
         p->shader->bind();
@@ -280,7 +305,7 @@ void Viewport::composite()
 
         // Bind the rendered texture to texture unit 0
         gl.ActiveTexture(GL_TEXTURE0);
-        gl.BindTexture(GL_TEXTURE_2D, p->shaderFBO->tex);
+        gl.BindTexture(GL_TEXTURE_2D, p->shaderTexture);
         p->shader->setUniformI("tex", 0);
 
         // Create a quad that covers the viewport area
