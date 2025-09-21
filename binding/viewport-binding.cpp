@@ -30,11 +30,8 @@
 
 #if RAPI_FULL > 187
 DEF_TYPE(Viewport);
-// Make sure we declare the CustomShader type here too
-extern RbType CustomShaderType;
 #else
 DEF_ALLOCFUNC(Viewport);
-extern RbAllocFunc CustomShaderAllocate;
 #endif
 
 RB_METHOD(viewportInitialize) {
@@ -82,7 +79,7 @@ RB_METHOD(viewportGetShader)
 
     Viewport *v = getPrivateData<Viewport>(self);
 
-    GUARD_EXC( CustomShader *shader = v->getShader(); );
+    GFX_GUARD_EXC( CustomShader *shader = v->getShader(); );
 
     if (!shader)
         return Qnil;
@@ -111,7 +108,7 @@ RB_METHOD(viewportSetShader)
         shader = getPrivateData<CustomShader>(shaderObj);
     }
 
-    GUARD_EXC( v->setShader(shader); );
+    GFX_GUARD_EXC( v->setShader(shader); );
 
     return shaderObj;
 }
