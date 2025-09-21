@@ -30,8 +30,11 @@
 
 #if RAPI_FULL > 187
 DEF_TYPE(Viewport);
+// Make sure we declare the CustomShader type here too
+extern RbType CustomShaderType;
 #else
 DEF_ALLOCFUNC(Viewport);
+extern RbAllocFunc CustomShaderAllocate;
 #endif
 
 RB_METHOD(viewportInitialize) {
@@ -79,34 +82,36 @@ RB_METHOD(viewportGetShader)
 
     Viewport *v = getPrivateData<Viewport>(self);
 
-    GFX_GUARD_EXC(
-        CustomShader *shader = v->getShader();
-        if (!shader)
-            return Qnil;
+    GUARD_EXC( CustomShader *shader = v->getShader(); );
 
-        return rb_iv_get(self, "@shader");
-    );
+    if (!shader)
+        return Qnil;
 
-    return Qnil;
+#if RAPI_FULL > 187
+    return getPrivateDataObj(shader, CustomShaderType);
+#else
+    return getPrivateDataObj(shader, CustomShaderAllocate);
+#endif
 }
 
 RB_METHOD(viewportSetShader)
 {
     Viewport *v = getPrivateData<Viewport>(self);
-
-    VALUE shaderObj = Qnil;
     CustomShader *shader = 0;
 
+    VALUE shaderObj;
     rb_get_args(argc, argv, "o", &shaderObj RB_ARG_END);
 
-    if (!NIL_P(shaderObj))
-    {
-        shader = getPrivateDataCheck<CustomShader>(shaderObj, CustomShaderType);
+    if (!NIL_P(shaderObj)) {
+        // Add type checking to prevent crashes
+        if (!rb_obj_is_kind_of(shaderObj, rb_const_get(rb_cObject, rb_intern("Shader")))) {
+            rb_raise(rb_eTypeError, "Expected Shader object");
+            return Qnil;
+        }
+        shader = getPrivateData<CustomShader>(shaderObj);
     }
 
-    GFX_GUARD_EXC( v->setShader(shader); );
-
-    rb_iv_set(self, "@shader", shaderObj);
+    GUARD_EXC( v->setShader(shader); );
 
     return shaderObj;
 }
@@ -132,8 +137,8 @@ void viewportBindingInit() {
 
     _rb_define_method(klass, "initialize", viewportInitialize);
 
-    rb_define_method(klass, "shader", RUBY_METHOD_FUNC(viewportGetShader), 0);
-    rb_define_method(klass, "shader=", RUBY_METHOD_FUNC(viewportSetShader), 1);
+    _rb_define_method(klass, "shader", viewportGetShader);
+    _rb_define_method(klass, "shader=", viewportSetShader);
 
     INIT_PROP_BIND(Viewport, Rect, "rect");
     INIT_PROP_BIND(Viewport, OX, "ox");

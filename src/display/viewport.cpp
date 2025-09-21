@@ -192,6 +192,12 @@ void Viewport::initDynAttribs()
 void Viewport::setShader(CustomShader *shader)
 {
     guardDisposed();
+
+    // Add validation
+    if (shader && shader->isDisposed()) {
+        return; // Don't assign disposed shaders
+    }
+
     p->shader = shader;
 }
 

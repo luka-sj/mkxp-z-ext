@@ -82,13 +82,13 @@ void etcBindingInit();
 void fontBindingInit();
 void bitmapBindingInit();
 void spriteBindingInit();
+void shaderBindingInit();
 void viewportBindingInit();
 void planeBindingInit();
 void windowBindingInit();
 void tilemapBindingInit();
 void windowVXBindingInit();
 void tilemapVXBindingInit();
-void shaderBindingInit();
 
 void inputBindingInit();
 void audioBindingInit();
@@ -162,9 +162,9 @@ static void mriBindingInit() {
     fontBindingInit();
     bitmapBindingInit();
     spriteBindingInit();
+    shaderBindingInit();
     viewportBindingInit();
     planeBindingInit();
-    shaderBindingInit();
 
     if (rgssVer == 1) {
         windowBindingInit();
