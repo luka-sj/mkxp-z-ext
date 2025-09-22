@@ -306,19 +306,26 @@ void Viewport::composite()
         p->shader->setTexSize(Vec2i(rect.w, rect.h));
         p->shader->setTranslation(Vec2i(0, 0));
 
+        printf("Shader uniforms - Resolution: %fx%f, Time: %f\n",
+               (float)rect.w, (float)rect.h, SDL_GetTicks() / 1000.0f);
+
         // Bind the rendered texture
         gl.ActiveTexture(GL_TEXTURE0);
         gl.BindTexture(GL_TEXTURE_2D, p->shaderTexture);
         p->shader->setUniformI("tex", 0);
 
+        printf("Texture bound to unit 0, texture ID: %u\n", p->shaderTexture);
+
         // Use MKXP-Z's Quad class
         if (!p->renderQuad) {
             p->renderQuad = new Quad();
+            printf("Created new render quad\n");
         }
 
         FloatRect texRect(0, 0, 1, 1);
         FloatRect posRect(0, 0, rect.w, rect.h);
         p->renderQuad->setTexPosRect(texRect, posRect);
+        printf("Drawing quad - texRect(0,0,1,1), posRect(0,0,%d,%d)\n", rect.w, rect.h);
         p->renderQuad->draw();
 
         p->shader->unbind();
