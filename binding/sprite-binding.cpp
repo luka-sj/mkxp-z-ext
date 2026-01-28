@@ -27,6 +27,7 @@
 #include "sharedstate.h"
 #include "sprite.h"
 #include "viewportelement-binding.h"
+#include "display/customshader.h"
 
 #if RAPI_FULL > 187
 DEF_TYPE(Sprite);
@@ -53,6 +54,7 @@ RB_METHOD(spriteInitialize) {
 
 DEF_GFX_PROP_OBJ_REF(Sprite, Bitmap, Bitmap, "bitmap")
 DEF_GFX_PROP_OBJ_REF(Sprite, Bitmap, Pattern, "pattern")
+DEF_GFX_PROP_OBJ_REF(Sprite, CustomShader, Shader, "@shader")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Rect, SrcRect, "src_rect")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Color, Color, "color")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Tone, Tone, "tone")
@@ -157,4 +159,6 @@ void spriteBindingInit() {
     INIT_PROP_BIND(Sprite, WaveLength, "wave_length");
     INIT_PROP_BIND(Sprite, WaveSpeed, "wave_speed");
     INIT_PROP_BIND(Sprite, WavePhase, "wave_phase");
+
+    INIT_PROP_BIND(Sprite, Shader, "shader");
 }
