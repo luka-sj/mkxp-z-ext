@@ -26,7 +26,7 @@
 #include "display/gl/shader.h"
 #include <string>
 
-// Internal shader class that can access protected Shader::init
+// Internal shader class that can access protected Shader::init (for viewports)
 class CustomShaderImpl : public ShaderBase
 {
 public:
@@ -39,6 +39,23 @@ private:
 	GLint u_time;
 };
 
+// Sprite-specific shader class with transformation matrix support
+class CustomSpriteShaderImpl : public ShaderBase
+{
+public:
+	CustomSpriteShaderImpl(const char *fragContents, int fragSize,
+	                       const char *fragName);
+
+	void setSpriteMat(const float value[16]);
+	void setTime(float value);
+	void setOpacity(float value);
+
+private:
+	GLint u_spriteMat;
+	GLint u_time;
+	GLint u_opacity;
+};
+
 struct CustomShaderPrivate;
 
 class CustomShader : public Disposable
@@ -49,6 +66,7 @@ public:
 
 	const std::string &getFilename() const;
 	CustomShaderImpl *getShader() const;
+	CustomSpriteShaderImpl *getSpriteShader() const;
 
 private:
 	void releaseResources();

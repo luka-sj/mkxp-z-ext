@@ -28,6 +28,7 @@
 #include "etc.h"
 #include "etc-internal.h"
 #include "util.h"
+#include "customshader.h"
 
 #include "gl-util.h"
 #include "quad.h"
@@ -42,6 +43,7 @@
 # define M_PI 3.14159265358979323846
 #endif
 
+#include <SDL.h>
 #include <SDL_rect.h>
 
 #include "sigslot/signal.hpp"
@@ -104,7 +106,8 @@ struct SpritePrivate
     
     Color *color;
     Tone *tone;
-    
+    CustomShader *shader;
+
     struct
     {
         int amp;
@@ -147,8 +150,9 @@ struct SpritePrivate
     invert(false),
     isVisible(false),
     color(&tmp.color),
-    tone(&tmp.tone)
-    
+    tone(&tmp.tone),
+    shader(0)
+
     {
         updateSrcRectCon();
         
@@ -686,6 +690,7 @@ DEF_ATTR_SIMPLE(Sprite, PatternScrollY, int, p->patternScroll.y)
 DEF_ATTR_SIMPLE(Sprite, PatternZoomX, float, p->patternZoom.x)
 DEF_ATTR_SIMPLE(Sprite, PatternZoomY, float, p->patternZoom.y)
 DEF_ATTR_SIMPLE(Sprite, Invert,      bool,    p->invert)
+DEF_ATTR_SIMPLE(Sprite, Shader,      CustomShader*, p->shader)
 
 void Sprite::setBitmap(Bitmap *bitmap)
 {
@@ -946,12 +951,40 @@ void Sprite::draw()
 {
     if (!p->isVisible)
         return;
-    
+
     if (emptyFlashFlag)
         return;
-    
+
     ShaderBase *base;
-    
+
+    // Check for custom shader first
+    bool hasCustomShader = p->shader && !p->shader->isDisposed();
+
+    if (hasCustomShader)
+    {
+        CustomSpriteShaderImpl *shader = p->shader->getSpriteShader();
+        shader->bind();
+        shader->applyViewportProj();
+        shader->setSpriteMat(p->trans.getMatrix());
+        shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
+        shader->setTime(SDL_GetTicks() / 1000.0f);
+        shader->setOpacity(p->opacity.norm);
+
+        base = shader;
+
+        glState.blendMode.pushSet(p->blendType);
+
+        p->bitmap->bindTex(*base, false);
+
+        if (p->wave.active)
+            p->wave.qArray.draw();
+        else
+            p->quad.draw();
+
+        glState.blendMode.pop();
+        return;
+    }
+
     bool renderEffect = p->color->hasEffect() ||
     p->tone->hasEffect()  ||
     flashing              ||
