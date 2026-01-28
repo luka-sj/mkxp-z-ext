@@ -32,6 +32,11 @@ class CustomShaderImpl : public ShaderBase
 public:
 	CustomShaderImpl(const char *fragContents, int fragSize,
 	                 const char *fragName);
+
+	void setTime(float value);
+
+private:
+	GLint u_time;
 };
 
 struct CustomShaderPrivate;
