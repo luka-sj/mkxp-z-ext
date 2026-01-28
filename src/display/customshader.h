@@ -26,6 +26,14 @@
 #include "display/gl/shader.h"
 #include <string>
 
+// Internal shader class that can access protected Shader::init
+class CustomShaderImpl : public ShaderBase
+{
+public:
+	CustomShaderImpl(const char *fragContents, int fragSize,
+	                 const char *fragName);
+};
+
 struct CustomShaderPrivate;
 
 class CustomShader : public Disposable
@@ -35,7 +43,7 @@ public:
 	~CustomShader();
 
 	const std::string &getFilename() const;
-	ShaderBase *getShader() const;
+	CustomShaderImpl *getShader() const;
 
 private:
 	void releaseResources();

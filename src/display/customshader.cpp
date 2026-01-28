@@ -24,13 +24,37 @@
 #include "filesystem/filesystem.h"
 #include "util/exception.h"
 #include "util/util.h"
-#include "display/gl/shader.h"
 #include <string>
+#include <cstring>
+
+// Simple passthrough vertex shader
+static const char *simpleVert =
+	"attribute vec2 position;\n"
+	"attribute vec2 texCoord;\n"
+	"varying vec2 v_texCoord;\n"
+	"uniform mat4 projMat;\n"
+	"uniform vec2 texSizeInv;\n"
+	"uniform vec2 translation;\n"
+	"void main() {\n"
+	"    gl_Position = projMat * vec4(position + translation, 0.0, 1.0);\n"
+	"    v_texCoord = texCoord * texSizeInv;\n"
+	"}\n";
+
+CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
+                                   const char *fragName)
+{
+	Shader::init(
+		(const unsigned char*)simpleVert, strlen(simpleVert),
+		(const unsigned char*)fragContents, fragSize,
+		"CustomShaderVert", fragName, "CustomShader");
+
+	ShaderBase::init();
+}
 
 struct CustomShaderPrivate
 {
 	std::string filename;
-	ShaderBase *shader;
+	CustomShaderImpl *shader;
 
 	CustomShaderPrivate(const char *filename)
 	    : filename(filename),
@@ -64,33 +88,15 @@ CustomShader::CustomShader(const char *filename)
 		                "Failed to read shader file '%s'", filename);
 	}
 
-	// Use a simple passthrough vertex shader (built-in)
-	// The fragment shader will be the custom one from the file
-	static const char *simpleVert = 
-		"attribute vec2 position;\n"
-		"attribute vec2 texCoord;\n"
-		"varying vec2 v_texCoord;\n"
-		"uniform mat4 projMat;\n"
-		"void main() {\n"
-		"    gl_Position = projMat * vec4(position, 0.0, 1.0);\n"
-		"    v_texCoord = texCoord;\n"
-		"}\n";
-
-	p->shader = new ShaderBase();
-
 	try
 	{
-		p->shader->init(
-			(const unsigned char*)simpleVert, strlen(simpleVert),
-			(const unsigned char*)fragContents.c_str(), fragContents.size(),
-			"CustomShaderVert", filename, "CustomShader");
+		p->shader = new CustomShaderImpl(
+			fragContents.c_str(), fragContents.size(), filename);
 	}
 	catch (const Exception &e)
 	{
-		delete p->shader;
-		p->shader = 0;
 		delete p;
-		throw e;
+		throw;
 	}
 }
 
@@ -105,7 +111,7 @@ const std::string &CustomShader::getFilename() const
 	return p->filename;
 }
 
-ShaderBase *CustomShader::getShader() const
+CustomShaderImpl *CustomShader::getShader() const
 {
 	guardDisposed();
 	return p->shader;
