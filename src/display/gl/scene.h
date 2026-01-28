@@ -31,6 +31,7 @@ class SceneElement;
 class Viewport;
 class WindowVX;
 class Window;
+class CustomShaderImpl;
 struct ScanRow;
 struct TilemapPrivate;
 
@@ -58,6 +59,7 @@ public:
 	virtual void requestViewportRender(const Vec4& /* color */,
 	                                   const Vec4& /* flash */,
 	                                   const Vec4& /* tone */) {}
+	virtual void requestViewportShaderRender(CustomShaderImpl* /* shader */) {}
 
 	const Geometry &getGeometry() const { return geometry; }
 

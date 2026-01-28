@@ -193,8 +193,9 @@ void Viewport::composite()
 		return;
 
 	bool renderEffect = p->needsEffectRender(flashing);
+	bool hasShader = p->shader && !p->shader->isDisposed();
 
-	if (elements.getSize() == 0 && !renderEffect)
+	if (elements.getSize() == 0 && !renderEffect && !hasShader)
 		return;
 
 	/* Setup scissor */
@@ -202,6 +203,10 @@ void Viewport::composite()
 	glState.scissorBox.pushSet(p->rect->toIntRect());
 
 	Scene::composite();
+
+	/* Apply custom shader if set */
+	if (hasShader)
+		scene->requestViewportShaderRender(p->shader->getShader());
 
 	/* If any effects are visible, request parent Scene to
 	 * render them. */
