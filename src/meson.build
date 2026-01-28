@@ -1246,6 +1246,7 @@ main_source = files(
     'display/autotiles.cpp',
     'display/autotilesvx.cpp',
     'display/bitmap.cpp',
+    'display/customshader.cpp',
     'display/font.cpp',
     'display/graphics.cpp',
     'display/plane.cpp',
