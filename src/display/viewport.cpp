@@ -206,7 +206,7 @@ void Viewport::composite()
 
 	/* Apply custom shader if set */
 	if (hasShader)
-		scene->requestViewportShaderRender(p->shader->getShader());
+		scene->requestViewportShaderRender(p->shader);
 
 	/* If any effects are visible, request parent Scene to
 	 * render them. */

@@ -25,6 +25,30 @@
 #include "util/disposable.h"
 #include "display/gl/shader.h"
 #include <string>
+#include <map>
+#include <vector>
+
+// Uniform value types
+enum UniformType {
+	UNIFORM_FLOAT,
+	UNIFORM_INT,
+	UNIFORM_VEC2,
+	UNIFORM_VEC3,
+	UNIFORM_VEC4
+};
+
+struct UniformValue {
+	UniformType type;
+	union {
+		float f;
+		int i;
+		float vec2[2];
+		float vec3[3];
+		float vec4[4];
+	} data;
+};
+
+typedef std::map<std::string, UniformValue> UniformMap;
 
 // Internal shader class that can access protected Shader::init (for viewports)
 class CustomShaderImpl : public ShaderBase
@@ -34,6 +58,7 @@ public:
 	                 const char *fragName);
 
 	void setTime(float value);
+	void applyUniforms(const UniformMap &uniforms);
 
 private:
 	GLint u_time;
@@ -49,6 +74,7 @@ public:
 	void setSpriteMat(const float value[16]);
 	void setTime(float value);
 	void setOpacity(float value);
+	void applyUniforms(const UniformMap &uniforms);
 
 private:
 	GLint u_spriteMat;
@@ -67,6 +93,16 @@ public:
 	const std::string &getFilename() const;
 	CustomShaderImpl *getShader() const;
 	CustomSpriteShaderImpl *getSpriteShader() const;
+
+	// Parameter setters
+	void setFloat(const char *name, float value);
+	void setInt(const char *name, int value);
+	void setVec2(const char *name, float x, float y);
+	void setVec3(const char *name, float x, float y, float z);
+	void setVec4(const char *name, float x, float y, float z, float w);
+
+	// Get the uniform map for applying to shaders
+	const UniformMap &getUniforms() const;
 
 private:
 	void releaseResources();

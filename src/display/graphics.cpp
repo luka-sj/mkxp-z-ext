@@ -658,7 +658,11 @@ public:
         glState.blendMode.refresh();
     }
 
-    void requestViewportShaderRender(CustomShaderImpl *shader) {
+    void requestViewportShaderRender(CustomShader *customShader) {
+        if (!customShader)
+            return;
+
+        CustomShaderImpl *shader = customShader->getShader();
         if (!shader)
             return;
 
@@ -687,6 +691,9 @@ public:
 
         // Use real time in seconds for animation
         shader->setTime(SDL_GetTicks() / 1000.0f);
+
+        // Apply custom uniform parameters
+        shader->applyUniforms(customShader->getUniforms());
 
         TEX::bind(pp.backBuffer().tex);
 

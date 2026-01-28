@@ -73,6 +73,36 @@ void CustomShaderImpl::setTime(float value)
 		gl.Uniform1f(u_time, value);
 }
 
+void CustomShaderImpl::applyUniforms(const UniformMap &uniforms)
+{
+	for (UniformMap::const_iterator it = uniforms.begin(); it != uniforms.end(); ++it)
+	{
+		GLint loc = gl.GetUniformLocation(program, it->first.c_str());
+		if (loc < 0)
+			continue;
+
+		const UniformValue &val = it->second;
+		switch (val.type)
+		{
+		case UNIFORM_FLOAT:
+			gl.Uniform1f(loc, val.data.f);
+			break;
+		case UNIFORM_INT:
+			gl.Uniform1i(loc, val.data.i);
+			break;
+		case UNIFORM_VEC2:
+			gl.Uniform2f(loc, val.data.vec2[0], val.data.vec2[1]);
+			break;
+		case UNIFORM_VEC3:
+			gl.Uniform3f(loc, val.data.vec3[0], val.data.vec3[1], val.data.vec3[2]);
+			break;
+		case UNIFORM_VEC4:
+			gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]);
+			break;
+		}
+	}
+}
+
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
                                                const char *fragName)
 {
@@ -105,11 +135,42 @@ void CustomSpriteShaderImpl::setOpacity(float value)
 		gl.Uniform1f(u_opacity, value);
 }
 
+void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
+{
+	for (UniformMap::const_iterator it = uniforms.begin(); it != uniforms.end(); ++it)
+	{
+		GLint loc = gl.GetUniformLocation(program, it->first.c_str());
+		if (loc < 0)
+			continue;
+
+		const UniformValue &val = it->second;
+		switch (val.type)
+		{
+		case UNIFORM_FLOAT:
+			gl.Uniform1f(loc, val.data.f);
+			break;
+		case UNIFORM_INT:
+			gl.Uniform1i(loc, val.data.i);
+			break;
+		case UNIFORM_VEC2:
+			gl.Uniform2f(loc, val.data.vec2[0], val.data.vec2[1]);
+			break;
+		case UNIFORM_VEC3:
+			gl.Uniform3f(loc, val.data.vec3[0], val.data.vec3[1], val.data.vec3[2]);
+			break;
+		case UNIFORM_VEC4:
+			gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]);
+			break;
+		}
+	}
+}
+
 struct CustomShaderPrivate
 {
 	std::string filename;
 	CustomShaderImpl *shader;
 	CustomSpriteShaderImpl *spriteShader;
+	UniformMap uniforms;
 
 	CustomShaderPrivate(const char *filename)
 	    : filename(filename),
@@ -180,6 +241,63 @@ CustomSpriteShaderImpl *CustomShader::getSpriteShader() const
 {
 	guardDisposed();
 	return p->spriteShader;
+}
+
+void CustomShader::setFloat(const char *name, float value)
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_FLOAT;
+	val.data.f = value;
+	p->uniforms[name] = val;
+}
+
+void CustomShader::setInt(const char *name, int value)
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_INT;
+	val.data.i = value;
+	p->uniforms[name] = val;
+}
+
+void CustomShader::setVec2(const char *name, float x, float y)
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_VEC2;
+	val.data.vec2[0] = x;
+	val.data.vec2[1] = y;
+	p->uniforms[name] = val;
+}
+
+void CustomShader::setVec3(const char *name, float x, float y, float z)
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_VEC3;
+	val.data.vec3[0] = x;
+	val.data.vec3[1] = y;
+	val.data.vec3[2] = z;
+	p->uniforms[name] = val;
+}
+
+void CustomShader::setVec4(const char *name, float x, float y, float z, float w)
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_VEC4;
+	val.data.vec4[0] = x;
+	val.data.vec4[1] = y;
+	val.data.vec4[2] = z;
+	val.data.vec4[3] = w;
+	p->uniforms[name] = val;
+}
+
+const UniformMap &CustomShader::getUniforms() const
+{
+	guardDisposed();
+	return p->uniforms;
 }
 
 void CustomShader::releaseResources()

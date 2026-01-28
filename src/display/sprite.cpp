@@ -970,6 +970,9 @@ void Sprite::draw()
         shader->setTime(SDL_GetTicks() / 1000.0f);
         shader->setOpacity(p->opacity.norm);
 
+        // Apply custom uniform parameters
+        shader->applyUniforms(p->shader->getUniforms());
+
         base = shader;
 
         glState.blendMode.pushSet(p->blendType);
