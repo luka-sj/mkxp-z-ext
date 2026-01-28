@@ -26,9 +26,9 @@
 #include "display/customshader.h"
 
 #if RAPI_FULL > 187
-DEF_TYPE(Shader);
+DEF_TYPE(CustomShader);
 #else
-DEF_ALLOCFUNC(Shader);
+DEF_ALLOCFUNC(CustomShader);
 #endif
 
 RB_METHOD(shaderInitialize) {
@@ -60,9 +60,9 @@ RB_METHOD_GUARD_END
 void shaderBindingInit() {
     VALUE klass = rb_define_class("Shader", rb_cObject);
 #if RAPI_FULL > 187
-    rb_define_alloc_func(klass, classAllocate<&ShaderType>);
+    rb_define_alloc_func(klass, classAllocate<&CustomShaderType>);
 #else
-    rb_define_alloc_func(klass, ShaderAllocate);
+    rb_define_alloc_func(klass, CustomShaderAllocate);
 #endif
     
     disposableBindingInit<CustomShader>(klass);
