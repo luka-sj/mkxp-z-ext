@@ -50,10 +50,85 @@ RB_METHOD(shaderInitialize) {
 
 RB_METHOD_GUARD(shaderGetFilename) {
     RB_UNUSED_PARAM;
-    
+
     CustomShader *s = getPrivateData<CustomShader>(self);
-    
+
     return rb_utf8_str_new_cstr(s->getFilename().c_str());
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(shaderSetFloat) {
+    const char *name;
+    double value;
+    rb_get_args(argc, argv, "zf", &name, &value RB_ARG_END);
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    GFX_LOCK;
+    s->setFloat(name, (float)value);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(shaderSetInt) {
+    const char *name;
+    int value;
+    rb_get_args(argc, argv, "zi", &name, &value RB_ARG_END);
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    GFX_LOCK;
+    s->setInt(name, value);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(shaderSetVec2) {
+    const char *name;
+    double x, y;
+    rb_get_args(argc, argv, "zff", &name, &x, &y RB_ARG_END);
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    GFX_LOCK;
+    s->setVec2(name, (float)x, (float)y);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(shaderSetVec3) {
+    const char *name;
+    double x, y, z;
+    rb_get_args(argc, argv, "zfff", &name, &x, &y, &z RB_ARG_END);
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    GFX_LOCK;
+    s->setVec3(name, (float)x, (float)y, (float)z);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(shaderSetVec4) {
+    const char *name;
+    double x, y, z, w;
+    rb_get_args(argc, argv, "zffff", &name, &x, &y, &z, &w RB_ARG_END);
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    GFX_LOCK;
+    s->setVec4(name, (float)x, (float)y, (float)z, (float)w);
+    GFX_UNLOCK;
+
+    return Qnil;
 }
 RB_METHOD_GUARD_END
 
@@ -66,7 +141,13 @@ void shaderBindingInit() {
 #endif
     
     disposableBindingInit<CustomShader>(klass);
-    
+
     _rb_define_method(klass, "initialize", shaderInitialize);
     _rb_define_method(klass, "filename", shaderGetFilename);
+
+    _rb_define_method(klass, "set_float", shaderSetFloat);
+    _rb_define_method(klass, "set_int", shaderSetInt);
+    _rb_define_method(klass, "set_vec2", shaderSetVec2);
+    _rb_define_method(klass, "set_vec3", shaderSetVec3);
+    _rb_define_method(klass, "set_vec4", shaderSetVec4);
 }
