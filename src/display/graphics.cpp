@@ -659,6 +659,9 @@ public:
         shader->setTexSize(screenRect.size());
         shader->setTranslation(Vec2i());
 
+        // Use real time in seconds for animation
+        shader->setTime(SDL_GetTicks() / 1000.0f);
+
         TEX::bind(pp.backBuffer().tex);
 
         glState.blend.pushSet(false);

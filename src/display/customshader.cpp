@@ -24,6 +24,7 @@
 #include "filesystem/filesystem.h"
 #include "util/exception.h"
 #include "util/util.h"
+#include "display/gl/gl-fun.h"
 #include <string>
 #include <cstring>
 
@@ -49,6 +50,14 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 		"CustomShaderVert", fragName, "CustomShader");
 
 	ShaderBase::init();
+
+	u_time = gl.GetUniformLocation(program, "time");
+}
+
+void CustomShaderImpl::setTime(float value)
+{
+	if (u_time >= 0)
+		gl.Uniform1f(u_time, value);
 }
 
 struct CustomShaderPrivate
