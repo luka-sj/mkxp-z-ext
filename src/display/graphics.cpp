@@ -45,6 +45,7 @@
 #include "util.h"
 #include "input.h"
 #include "sprite.h"
+#include "customshader.h"
 
 #include <SDL.h>
 #include <SDL_image.h>
@@ -630,7 +631,41 @@ public:
         
         glState.blendMode.refresh();
     }
-    
+
+    void requestViewportShaderRender(CustomShaderImpl *shader) {
+        if (!shader)
+            return;
+
+        const IntRect &viewpRect = glState.scissorBox.get();
+        const IntRect &screenRect = geometry.rect;
+
+        pp.swapRender();
+
+        if (!viewpRect.encloses(screenRect)) {
+            glState.scissorTest.pushSet(false);
+
+            int scaleIsSpecial = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, geometry.rect, pp.backBuffer(), geometry.rect);
+
+            GLMeta::blitBegin(pp.frontBuffer(), false, scaleIsSpecial);
+            GLMeta::blitSource(pp.backBuffer(), scaleIsSpecial);
+            GLMeta::blitRectangle(geometry.rect, Vec2i());
+            GLMeta::blitEnd();
+
+            glState.scissorTest.pop();
+        }
+
+        shader->bind();
+        shader->applyViewportProj();
+        shader->setTexSize(screenRect.size());
+        shader->setTranslation(Vec2i());
+
+        TEX::bind(pp.backBuffer().tex);
+
+        glState.blend.pushSet(false);
+        screenQuad.draw();
+        glState.blend.pop();
+    }
+
     void setBrightness(float norm) {
         brightnessQuad.setColor(Vec4(0, 0, 0, 1.0f - norm));
         
