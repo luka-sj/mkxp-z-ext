@@ -33,7 +33,6 @@ enum UniformType {
 	UNIFORM_FLOAT,
 	UNIFORM_INT,
 	UNIFORM_VEC2,
-	UNIFORM_VEC3,
 	UNIFORM_VEC4
 };
 
@@ -43,7 +42,6 @@ struct UniformValue {
 		float f;
 		int i;
 		float vec2[2];
-		float vec3[3];
 		float vec4[4];
 	} data;
 };
@@ -56,6 +54,7 @@ class CustomShaderImpl : public ShaderBase
 public:
 	CustomShaderImpl(const char *fragContents, int fragSize,
 	                 const char *fragName);
+	virtual ~CustomShaderImpl() {}
 
 	void setTime(float value);
 	void applyUniforms(const UniformMap &uniforms);
@@ -70,6 +69,7 @@ class CustomSpriteShaderImpl : public ShaderBase
 public:
 	CustomSpriteShaderImpl(const char *fragContents, int fragSize,
 	                       const char *fragName);
+	virtual ~CustomSpriteShaderImpl() {}
 
 	void setSpriteMat(const float value[16]);
 	void setTime(float value);
@@ -98,7 +98,6 @@ public:
 	void setFloat(const char *name, float value);
 	void setInt(const char *name, int value);
 	void setVec2(const char *name, float x, float y);
-	void setVec3(const char *name, float x, float y, float z);
 	void setVec4(const char *name, float x, float y, float z, float w);
 
 	// Get the uniform map for applying to shaders
