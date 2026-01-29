@@ -498,11 +498,17 @@ private:
 
 class ScreenScene : public Scene {
 public:
-    ScreenScene(int width, int height) : pp(width, height) {
+    ScreenScene(int width, int height) : pp(width, height), viewportShaderTexInited(false),
+        viewportShaderTexW(0), viewportShaderTexH(0) {
         updateReso(width, height);
-        
+
         brightEffect = false;
         brightnessQuad.setColor(Vec4());
+    }
+
+    ~ScreenScene() {
+        if (viewportShaderTexInited)
+            TEXFBO::fini(viewportShaderTex);
     }
     
     void composite() {
@@ -643,12 +649,45 @@ public:
         const IntRect &viewpRect = glState.scissorBox.get();
         const IntRect &screenRect = geometry.rect;
 
+        // Ensure viewport temp texture is allocated and sized correctly
+        if (!viewportShaderTexInited) {
+            TEXFBO::init(viewportShaderTex);
+            viewportShaderTexInited = true;
+            viewportShaderTexW = 0;
+            viewportShaderTexH = 0;
+        }
+
+        // Resize temp texture if viewport size changed
+        if (viewportShaderTexW != viewpRect.w || viewportShaderTexH != viewpRect.h) {
+            TEXFBO::allocEmpty(viewportShaderTex, viewpRect.w, viewpRect.h);
+            TEXFBO::linkFBO(viewportShaderTex);
+            viewportShaderTexW = viewpRect.w;
+            viewportShaderTexH = viewpRect.h;
+        }
+
+        // Disable scissor for blitting
+        glState.scissorTest.pushSet(false);
+
+        // Blit just the viewport region from the back buffer to our temp texture
+        IntRect srcRect(viewpRect.x, viewpRect.y, viewpRect.w, viewpRect.h);
+        IntRect dstRect(0, 0, viewpRect.w, viewpRect.h);
+
+        int scaleIsSpecial = GLMeta::blitScaleIsSpecial(viewportShaderTex, false, dstRect, pp.frontBuffer(), srcRect);
+        GLMeta::blitBegin(viewportShaderTex, false, scaleIsSpecial);
+        GLMeta::blitSource(pp.frontBuffer(), scaleIsSpecial);
+        GLMeta::blitRectangle(srcRect, dstRect, false);
+        GLMeta::blitEnd();
+
+        glState.scissorTest.pop();
+
+        // Now swap and render with shader
         pp.swapRender();
 
+        // Copy areas outside viewport from back buffer to front buffer
         if (!viewpRect.encloses(screenRect)) {
             glState.scissorTest.pushSet(false);
 
-            int scaleIsSpecial = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, geometry.rect, pp.backBuffer(), geometry.rect);
+            scaleIsSpecial = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, geometry.rect, pp.backBuffer(), geometry.rect);
 
             GLMeta::blitBegin(pp.frontBuffer(), false, scaleIsSpecial);
             GLMeta::blitSource(pp.backBuffer(), scaleIsSpecial);
@@ -658,9 +697,13 @@ public:
             glState.scissorTest.pop();
         }
 
+        // Set up quad to cover viewport area with texture coords mapping to full temp texture
+        IntRect texRect(0, 0, viewpRect.w, viewpRect.h);
+        viewportQuad.setTexPosRect(texRect, viewpRect);
+
         shader->bind();
         shader->applyViewportProj();
-        shader->setTexSize(screenRect.size());
+        shader->setTexSize(Vec2i(viewpRect.w, viewpRect.h));
         shader->setTranslation(Vec2i());
 
         // Use real time in seconds for animation
@@ -669,10 +712,11 @@ public:
         // Apply custom uniform parameters
         shader->applyUniforms(customShader->getUniforms());
 
-        TEX::bind(pp.backBuffer().tex);
+        // Bind the viewport-only temp texture
+        TEX::bind(viewportShaderTex.tex);
 
         glState.blend.pushSet(false);
-        screenQuad.draw();
+        viewportQuad.draw();
         glState.blend.pop();
     }
 
@@ -702,9 +746,15 @@ public:
 private:
     PingPong pp;
     Quad screenQuad;
-    
+
     Quad brightnessQuad;
     bool brightEffect;
+
+    // Temporary texture for viewport shader rendering
+    TEXFBO viewportShaderTex;
+    bool viewportShaderTexInited;
+    int viewportShaderTexW, viewportShaderTexH;
+    Quad viewportQuad;
 };
 
 /* Nanoseconds per second */
