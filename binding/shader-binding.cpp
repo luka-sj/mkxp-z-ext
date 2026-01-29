@@ -102,21 +102,6 @@ RB_METHOD_GUARD(shaderSetVec2) {
 }
 RB_METHOD_GUARD_END
 
-RB_METHOD_GUARD(shaderSetVec3) {
-    const char *name;
-    double x, y, z;
-    rb_get_args(argc, argv, "zfff", &name, &x, &y, &z RB_ARG_END);
-
-    CustomShader *s = getPrivateData<CustomShader>(self);
-
-    GFX_LOCK;
-    s->setVec3(name, (float)x, (float)y, (float)z);
-    GFX_UNLOCK;
-
-    return Qnil;
-}
-RB_METHOD_GUARD_END
-
 RB_METHOD_GUARD(shaderSetVec4) {
     const char *name;
     double x, y, z, w;
@@ -148,6 +133,5 @@ void shaderBindingInit() {
     _rb_define_method(klass, "set_float", shaderSetFloat);
     _rb_define_method(klass, "set_int", shaderSetInt);
     _rb_define_method(klass, "set_vec2", shaderSetVec2);
-    _rb_define_method(klass, "set_vec3", shaderSetVec3);
     _rb_define_method(klass, "set_vec4", shaderSetVec4);
 }
