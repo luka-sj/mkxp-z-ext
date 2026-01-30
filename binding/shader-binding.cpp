@@ -31,22 +31,23 @@ DEF_TYPE(CustomShader);
 DEF_ALLOCFUNC(CustomShader);
 #endif
 
-RB_METHOD(shaderInitialize) {
+RB_METHOD_GUARD(shaderInitialize) {
     const char *filename;
     rb_get_args(argc, argv, "z", &filename RB_ARG_END);
-    
+
     CustomShader *s = 0;
-    
+
     GFX_LOCK;
-    
+
     s = new CustomShader(filename);
-    
+
     GFX_UNLOCK;
-    
+
     setPrivateData(self, s);
-    
+
     return self;
 }
+RB_METHOD_GUARD_END
 
 RB_METHOD_GUARD(shaderGetFilename) {
     RB_UNUSED_PARAM;

@@ -25,8 +25,49 @@
 #include "util/exception.h"
 #include "util/util.h"
 #include "display/gl/gl-fun.h"
+#include "display/gl/glstate.h"
 #include <string>
 #include <cstring>
+
+// Helper function to get shader compilation log
+static std::string getShaderLog(GLuint shader)
+{
+	GLint logLength = 0;
+	gl.GetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+
+	if (logLength <= 0)
+		return "No error details available";
+
+	std::string log(logLength, '\0');
+	gl.GetShaderInfoLog(shader, log.size(), 0, &log[0]);
+
+	// Trim trailing whitespace/nulls
+	size_t end = log.find_last_not_of(" \t\n\r\0");
+	if (end != std::string::npos)
+		log = log.substr(0, end + 1);
+
+	return log;
+}
+
+// Helper function to get program link log
+static std::string getProgramLog(GLuint program)
+{
+	GLint logLength = 0;
+	gl.GetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+
+	if (logLength <= 0)
+		return "No error details available";
+
+	std::string log(logLength, '\0');
+	gl.GetProgramInfoLog(program, log.size(), 0, &log[0]);
+
+	// Trim trailing whitespace/nulls
+	size_t end = log.find_last_not_of(" \t\n\r\0");
+	if (end != std::string::npos)
+		log = log.substr(0, end + 1);
+
+	return log;
+}
 
 // Simple passthrough vertex shader (for viewports)
 static const char *simpleVert =
@@ -57,10 +98,60 @@ static const char *spriteVert =
 CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
                                    const char *fragName)
 {
-	Shader::init(
-		(const unsigned char*)simpleVert, strlen(simpleVert),
-		(const unsigned char*)fragContents, fragSize,
-		"CustomShaderVert", fragName, "CustomShader");
+	// Compile vertex shader with error handling
+	const GLchar *vertSources[1] = { simpleVert };
+	GLint vertLengths[1] = { (GLint)strlen(simpleVert) };
+
+	gl.ShaderSource(vertShader, 1, vertSources, vertLengths);
+	gl.CompileShader(vertShader);
+
+	GLint success = 0;
+	gl.GetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+
+	if (!success)
+	{
+		std::string log = getShaderLog(vertShader);
+		throw Exception(Exception::MKXPError,
+		                "Internal vertex shader compilation failed for '%s':\n%s",
+		                fragName, log.c_str());
+	}
+
+	// Compile fragment shader with error handling
+	const GLchar *fragSources[1] = { fragContents };
+	GLint fragLengths[1] = { fragSize };
+
+	gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
+	gl.CompileShader(fragShader);
+
+	gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+
+	if (!success)
+	{
+		std::string log = getShaderLog(fragShader);
+		throw Exception(Exception::MKXPError,
+		                "Shader compilation failed for '%s':\n%s",
+		                fragName, log.c_str());
+	}
+
+	// Link program with error handling
+	gl.AttachShader(program, vertShader);
+	gl.AttachShader(program, fragShader);
+
+	gl.BindAttribLocation(program, Shader::Position, "position");
+	gl.BindAttribLocation(program, Shader::TexCoord, "texCoord");
+	gl.BindAttribLocation(program, Shader::Color, "color");
+
+	gl.LinkProgram(program);
+
+	gl.GetProgramiv(program, GL_LINK_STATUS, &success);
+
+	if (!success)
+	{
+		std::string log = getProgramLog(program);
+		throw Exception(Exception::MKXPError,
+		                "Shader program linking failed for '%s':\n%s",
+		                fragName, log.c_str());
+	}
 
 	ShaderBase::init();
 
@@ -103,10 +194,60 @@ void CustomShaderImpl::applyUniforms(const UniformMap &uniforms)
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
                                                const char *fragName)
 {
-	Shader::init(
-		(const unsigned char*)spriteVert, strlen(spriteVert),
-		(const unsigned char*)fragContents, fragSize,
-		"CustomSpriteShaderVert", fragName, "CustomSpriteShader");
+	// Compile vertex shader with error handling
+	const GLchar *vertSources[1] = { spriteVert };
+	GLint vertLengths[1] = { (GLint)strlen(spriteVert) };
+
+	gl.ShaderSource(vertShader, 1, vertSources, vertLengths);
+	gl.CompileShader(vertShader);
+
+	GLint success = 0;
+	gl.GetShaderiv(vertShader, GL_COMPILE_STATUS, &success);
+
+	if (!success)
+	{
+		std::string log = getShaderLog(vertShader);
+		throw Exception(Exception::MKXPError,
+		                "Internal vertex shader compilation failed for '%s':\n%s",
+		                fragName, log.c_str());
+	}
+
+	// Compile fragment shader with error handling
+	const GLchar *fragSources[1] = { fragContents };
+	GLint fragLengths[1] = { fragSize };
+
+	gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
+	gl.CompileShader(fragShader);
+
+	gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+
+	if (!success)
+	{
+		std::string log = getShaderLog(fragShader);
+		throw Exception(Exception::MKXPError,
+		                "Shader compilation failed for '%s':\n%s",
+		                fragName, log.c_str());
+	}
+
+	// Link program with error handling
+	gl.AttachShader(program, vertShader);
+	gl.AttachShader(program, fragShader);
+
+	gl.BindAttribLocation(program, Shader::Position, "position");
+	gl.BindAttribLocation(program, Shader::TexCoord, "texCoord");
+	gl.BindAttribLocation(program, Shader::Color, "color");
+
+	gl.LinkProgram(program);
+
+	gl.GetProgramiv(program, GL_LINK_STATUS, &success);
+
+	if (!success)
+	{
+		std::string log = getProgramLog(program);
+		throw Exception(Exception::MKXPError,
+		                "Shader program linking failed for '%s':\n%s",
+		                fragName, log.c_str());
+	}
 
 	ShaderBase::init();
 
