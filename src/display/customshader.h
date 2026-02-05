@@ -28,6 +28,8 @@
 #include <map>
 #include <vector>
 
+class Bitmap;
+
 // Uniform value types
 enum UniformType {
 	UNIFORM_FLOAT,
@@ -47,6 +49,7 @@ struct UniformValue {
 };
 
 typedef std::map<std::string, UniformValue> UniformMap;
+typedef std::map<std::string, Bitmap*> BitmapMap;
 
 // Internal shader class that can access protected Shader::init (for viewports)
 class CustomShaderImpl : public ShaderBase
@@ -58,6 +61,7 @@ public:
 
 	void setTime(float value);
 	void applyUniforms(const UniformMap &uniforms);
+	void applyBitmaps(const BitmapMap &bitmaps, int startUnit = 1);
 
 private:
 	GLint u_time;
@@ -75,6 +79,7 @@ public:
 	void setTime(float value);
 	void setOpacity(float value);
 	void applyUniforms(const UniformMap &uniforms);
+	void applyBitmaps(const BitmapMap &bitmaps, int startUnit = 1);
 
 private:
 	GLint u_spriteMat;
@@ -99,9 +104,11 @@ public:
 	void setInt(const char *name, int value);
 	void setVec2(const char *name, float x, float y);
 	void setVec4(const char *name, float x, float y, float z, float w);
+	void setBitmap(const char *name, Bitmap *bitmap);
 
 	// Get the uniform map for applying to shaders
 	const UniformMap &getUniforms() const;
+	const BitmapMap &getBitmaps() const;
 
 private:
 	void releaseResources();

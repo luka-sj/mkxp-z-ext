@@ -973,6 +973,9 @@ void Sprite::draw()
         // Apply custom uniform parameters
         shader->applyUniforms(p->shader->getUniforms());
 
+        // Apply custom bitmap parameters (textures start at unit 1)
+        shader->applyBitmaps(p->shader->getBitmaps(), 1);
+
         base = shader;
 
         glState.blendMode.pushSet(p->blendType);

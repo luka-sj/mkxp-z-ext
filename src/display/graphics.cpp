@@ -712,6 +712,9 @@ public:
         // Apply custom uniform parameters
         shader->applyUniforms(customShader->getUniforms());
 
+        // Apply custom bitmap parameters (textures start at unit 1)
+        shader->applyBitmaps(customShader->getBitmaps(), 1);
+
         // Bind the viewport-only temp texture
         TEX::bind(viewportShaderTex.tex);
 
