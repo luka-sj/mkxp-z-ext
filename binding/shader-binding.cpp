@@ -24,6 +24,7 @@
 #include "disposable-binding.h"
 #include "sharedstate.h"
 #include "display/customshader.h"
+#include "display/bitmap.h"
 
 #if RAPI_FULL > 187
 DEF_TYPE(CustomShader);
@@ -118,6 +119,27 @@ RB_METHOD_GUARD(shaderSetVec4) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(shaderSetBitmap) {
+    const char *name;
+    VALUE bitmapObj;
+    rb_get_args(argc, argv, "zo", &name, &bitmapObj RB_ARG_END);
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    Bitmap *bitmap = 0;
+    if (!NIL_P(bitmapObj))
+    {
+        bitmap = getPrivateDataCheck<Bitmap>(bitmapObj, BitmapType);
+    }
+
+    GFX_LOCK;
+    s->setBitmap(name, bitmap);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
 void shaderBindingInit() {
     VALUE klass = rb_define_class("Shader", rb_cObject);
 #if RAPI_FULL > 187
@@ -135,4 +157,5 @@ void shaderBindingInit() {
     _rb_define_method(klass, "set_int", shaderSetInt);
     _rb_define_method(klass, "set_vec2", shaderSetVec2);
     _rb_define_method(klass, "set_vec4", shaderSetVec4);
+    _rb_define_method(klass, "set_bitmap", shaderSetBitmap);
 }

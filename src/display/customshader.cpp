@@ -26,6 +26,7 @@
 #include "util/util.h"
 #include "display/gl/gl-fun.h"
 #include "display/gl/glstate.h"
+#include "display/bitmap.h"
 #include <string>
 #include <cstring>
 
@@ -191,6 +192,35 @@ void CustomShaderImpl::applyUniforms(const UniformMap &uniforms)
 	}
 }
 
+void CustomShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUnit)
+{
+	int unit = startUnit;
+	for (BitmapMap::const_iterator it = bitmaps.begin(); it != bitmaps.end(); ++it)
+	{
+		Bitmap *bitmap = it->second;
+		if (!bitmap || bitmap->isDisposed())
+			continue;
+
+		GLint loc = gl.GetUniformLocation(program, it->first.c_str());
+		if (loc < 0)
+			continue;
+
+		// Also set the size inverse uniform if it exists (name + "SizeInv")
+		std::string sizeInvName = it->first + "SizeInv";
+		GLint sizeInvLoc = gl.GetUniformLocation(program, sizeInvName.c_str());
+
+		TEX::ID tex = bitmap->getGLTypes().tex;
+		setTexUniform(loc, unit, tex);
+
+		if (sizeInvLoc >= 0)
+		{
+			gl.Uniform2f(sizeInvLoc, 1.0f / bitmap->width(), 1.0f / bitmap->height());
+		}
+
+		unit++;
+	}
+}
+
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
                                                const char *fragName)
 {
@@ -300,12 +330,42 @@ void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
 	}
 }
 
+void CustomSpriteShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUnit)
+{
+	int unit = startUnit;
+	for (BitmapMap::const_iterator it = bitmaps.begin(); it != bitmaps.end(); ++it)
+	{
+		Bitmap *bitmap = it->second;
+		if (!bitmap || bitmap->isDisposed())
+			continue;
+
+		GLint loc = gl.GetUniformLocation(program, it->first.c_str());
+		if (loc < 0)
+			continue;
+
+		// Also set the size inverse uniform if it exists (name + "SizeInv")
+		std::string sizeInvName = it->first + "SizeInv";
+		GLint sizeInvLoc = gl.GetUniformLocation(program, sizeInvName.c_str());
+
+		TEX::ID tex = bitmap->getGLTypes().tex;
+		setTexUniform(loc, unit, tex);
+
+		if (sizeInvLoc >= 0)
+		{
+			gl.Uniform2f(sizeInvLoc, 1.0f / bitmap->width(), 1.0f / bitmap->height());
+		}
+
+		unit++;
+	}
+}
+
 struct CustomShaderPrivate
 {
 	std::string filename;
 	CustomShaderImpl *shader;
 	CustomSpriteShaderImpl *spriteShader;
 	UniformMap uniforms;
+	BitmapMap bitmaps;
 
 	CustomShaderPrivate(const char *filename)
 	    : filename(filename),
@@ -418,10 +478,31 @@ void CustomShader::setVec4(const char *name, float x, float y, float z, float w)
 	p->uniforms[name] = val;
 }
 
+void CustomShader::setBitmap(const char *name, Bitmap *bitmap)
+{
+	guardDisposed();
+	if (bitmap && !bitmap->isDisposed())
+	{
+		bitmap->ensureNonMega();
+		p->bitmaps[name] = bitmap;
+	}
+	else
+	{
+		// Remove the bitmap if null or disposed
+		p->bitmaps.erase(name);
+	}
+}
+
 const UniformMap &CustomShader::getUniforms() const
 {
 	guardDisposed();
 	return p->uniforms;
+}
+
+const BitmapMap &CustomShader::getBitmaps() const
+{
+	guardDisposed();
+	return p->bitmaps;
 }
 
 void CustomShader::releaseResources()
