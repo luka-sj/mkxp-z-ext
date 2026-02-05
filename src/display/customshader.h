@@ -35,6 +35,7 @@ enum UniformType {
 	UNIFORM_FLOAT,
 	UNIFORM_INT,
 	UNIFORM_VEC2,
+	UNIFORM_VEC3,
 	UNIFORM_VEC4
 };
 
@@ -44,6 +45,7 @@ struct UniformValue {
 		float f;
 		int i;
 		float vec2[2];
+		float vec3[3];
 		float vec4[4];
 	} data;
 };
@@ -103,6 +105,7 @@ public:
 	void setFloat(const char *name, float value);
 	void setInt(const char *name, int value);
 	void setVec2(const char *name, float x, float y);
+	void setVec3(const char *name, float x, float y, float z);
 	void setVec4(const char *name, float x, float y, float z, float w);
 	void setBitmap(const char *name, Bitmap *bitmap);
 

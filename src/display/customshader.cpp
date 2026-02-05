@@ -185,6 +185,9 @@ void CustomShaderImpl::applyUniforms(const UniformMap &uniforms)
 		case UNIFORM_VEC2:
 			gl.Uniform2f(loc, val.data.vec2[0], val.data.vec2[1]);
 			break;
+		case UNIFORM_VEC3:
+			gl.Uniform3f(loc, val.data.vec3[0], val.data.vec3[1], val.data.vec3[2]);
+			break;
 		case UNIFORM_VEC4:
 			gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]);
 			break;
@@ -322,6 +325,9 @@ void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
 			break;
 		case UNIFORM_VEC2:
 			gl.Uniform2f(loc, val.data.vec2[0], val.data.vec2[1]);
+			break;
+		case UNIFORM_VEC3:
+			gl.Uniform3f(loc, val.data.vec3[0], val.data.vec3[1], val.data.vec3[2]);
 			break;
 		case UNIFORM_VEC4:
 			gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]);
@@ -463,6 +469,17 @@ void CustomShader::setVec2(const char *name, float x, float y)
 	val.type = UNIFORM_VEC2;
 	val.data.vec2[0] = x;
 	val.data.vec2[1] = y;
+	p->uniforms[name] = val;
+}
+
+void CustomShader::setVec3(const char *name, float x, float y, float z)
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_VEC3;
+	val.data.vec3[0] = x;
+	val.data.vec3[1] = y;
+	val.data.vec3[2] = z;
 	p->uniforms[name] = val;
 }
 
