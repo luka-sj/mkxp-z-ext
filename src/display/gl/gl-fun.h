@@ -90,6 +90,7 @@ typedef void (APIENTRYP _PFNGLGETPROGRAMINFOLOGPROC) (GLuint program, GLsizei bu
 typedef GLint (APIENTRYP _PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const GLchar* name);
 typedef void (APIENTRYP _PFNGLUNIFORM1FPROC) (GLint location, GLfloat v0);
 typedef void (APIENTRYP _PFNGLUNIFORM2FPROC) (GLint location, GLfloat v0, GLfloat v1);
+typedef void (APIENTRYP _PFNGLUNIFORM3FPROC) (GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
 typedef void (APIENTRYP _PFNGLUNIFORM4FPROC) (GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
 typedef void (APIENTRYP _PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
 typedef void (APIENTRYP _PFNGLUNIFORM1IVPROC) (GLint location, GLsizei count, const GLint *value);
@@ -177,6 +178,7 @@ typedef void (APIENTRYP _PFNGLRELEASESHADERCOMPILERPROC) (void);
 	GL_FUN(GetUniformLocation, _PFNGLGETUNIFORMLOCATIONPROC) \
 	GL_FUN(Uniform1f, _PFNGLUNIFORM1FPROC) \
 	GL_FUN(Uniform2f, _PFNGLUNIFORM2FPROC) \
+	GL_FUN(Uniform3f, _PFNGLUNIFORM3FPROC) \
 	GL_FUN(Uniform4f, _PFNGLUNIFORM4FPROC) \
 	GL_FUN(Uniform1i, _PFNGLUNIFORM1IPROC) \
 	GL_FUN(Uniform1iv, _PFNGLUNIFORM1IVPROC) \
