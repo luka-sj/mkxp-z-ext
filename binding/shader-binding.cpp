@@ -27,7 +27,7 @@
 #include "display/bitmap.h"
 
 #if RAPI_FULL > 187
-DEF_TYPE(CustomShader);
+DEF_TYPE_CUSTOMNAME(CustomShader, "Shader");
 #else
 DEF_ALLOCFUNC(CustomShader);
 #endif
