@@ -22,6 +22,8 @@
 #ifndef SPRITE_H
 #define SPRITE_H
 
+#include <vector>
+
 #include "scene.h"
 #include "flashable.h"
 #include "disposable.h"
@@ -76,6 +78,7 @@ public:
 	DECL_ATTR( WaveSpeed,   int     )
 	DECL_ATTR( WavePhase,   float   )
 	DECL_ATTR( Shader,      class CustomShader* )
+	DECL_ATTR( Shaders,     std::vector<class CustomShader*>& )
 
 	void initDynAttribs();
 

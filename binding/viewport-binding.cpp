@@ -81,6 +81,26 @@ DEF_GFX_PROP_OBJ_REF(Viewport, CustomShader, Shader, "@shader")
 DEF_GFX_PROP_I(Viewport, OX)
 DEF_GFX_PROP_I(Viewport, OY)
 
+RB_METHOD_GUARD(viewportGetShaders) {
+    RB_UNUSED_PARAM;
+    
+    Viewport *v = getPrivateData<Viewport>(self);
+    std::vector<CustomShader*>& shaders = v->getShaders();
+    
+    VALUE ary = rb_ary_new();
+    for (size_t i = 0; i < shaders.size(); ++i) {
+        if (shaders[i]) {
+            VALUE shaderObj = wrapObject(shaders[i], CustomShaderType);
+            rb_ary_push(ary, shaderObj);
+        } else {
+            rb_ary_push(ary, Qnil);
+        }
+    }
+    
+    return ary;
+}
+RB_METHOD_GUARD_END
+
 void viewportBindingInit() {
     VALUE klass = rb_define_class("Viewport", rb_cObject);
 #if RAPI_FULL > 187
@@ -101,4 +121,6 @@ void viewportBindingInit() {
     INIT_PROP_BIND(Viewport, Color, "color");
     INIT_PROP_BIND(Viewport, Tone, "tone");
     INIT_PROP_BIND(Viewport, Shader, "shader");
+    
+    _rb_define_method(klass, "shaders", viewportGetShaders);
 }
