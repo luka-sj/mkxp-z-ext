@@ -107,6 +107,7 @@ struct SpritePrivate
     Color *color;
     Tone *tone;
     CustomShader *shader;
+    std::vector<CustomShader*> shaders;
 
     struct
     {
@@ -691,6 +692,7 @@ DEF_ATTR_SIMPLE(Sprite, PatternZoomX, float, p->patternZoom.x)
 DEF_ATTR_SIMPLE(Sprite, PatternZoomY, float, p->patternZoom.y)
 DEF_ATTR_SIMPLE(Sprite, Invert,      bool,    p->invert)
 DEF_ATTR_SIMPLE(Sprite, Shader,      CustomShader*, p->shader)
+DEF_ATTR_SIMPLE(Sprite, Shaders,     std::vector<CustomShader*>&, p->shaders)
 
 void Sprite::setBitmap(Bitmap *bitmap)
 {
@@ -957,9 +959,50 @@ void Sprite::draw()
 
     ShaderBase *base;
 
-    // Check for custom shader first
+    // Check for custom shaders (both single and multiple)
     bool hasCustomShader = p->shader && !p->shader->isDisposed();
+    bool hasCustomShaders = !p->shaders.empty();
+    
+    // Process shaders from the shaders vector
+    if (hasCustomShaders)
+    {
+        for (size_t i = 0; i < p->shaders.size(); ++i)
+        {
+            CustomShader *customShader = p->shaders[i];
+            if (!customShader || customShader->isDisposed())
+                continue;
+            
+            CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
+            shader->bind();
+            shader->applyViewportProj();
+            shader->setSpriteMat(p->trans.getMatrix());
+            shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
+            shader->setTime(SDL_GetTicks() / 1000.0f);
+            shader->setOpacity(p->opacity.norm);
 
+            // Apply custom uniform parameters
+            shader->applyUniforms(customShader->getUniforms());
+
+            // Apply custom bitmap parameters (textures start at unit 1)
+            shader->applyBitmaps(customShader->getBitmaps(), 1);
+
+            base = shader;
+
+            glState.blendMode.pushSet(p->blendType);
+
+            p->bitmap->bindTex(*base, false);
+
+            if (p->wave.active)
+                p->wave.qArray.draw();
+            else
+                p->quad.draw();
+
+            glState.blendMode.pop();
+        }
+        return;
+    }
+
+    // Fallback to single shader for backward compatibility
     if (hasCustomShader)
     {
         CustomSpriteShaderImpl *shader = p->shader->getSpriteShader();

@@ -22,6 +22,8 @@
 #ifndef VIEWPORT_H
 #define VIEWPORT_H
 
+#include <vector>
+
 #include "scene.h"
 #include "flashable.h"
 #include "disposable.h"
@@ -45,6 +47,7 @@ public:
 	DECL_ATTR( Color, Color& )
 	DECL_ATTR( Tone,  Tone&  )
 	DECL_ATTR( Shader, class CustomShader* )
+	DECL_ATTR( Shaders, std::vector<class CustomShader*>& )
 
 	void initDynAttribs();
 

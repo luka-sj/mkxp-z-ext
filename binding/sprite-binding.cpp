@@ -110,6 +110,26 @@ RB_METHOD_GUARD(spriteHeight) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(spriteGetShaders) {
+    RB_UNUSED_PARAM;
+    
+    Sprite *s = getPrivateData<Sprite>(self);
+    std::vector<CustomShader*>& shaders = s->getShaders();
+    
+    VALUE ary = rb_ary_new();
+    for (size_t i = 0; i < shaders.size(); ++i) {
+        if (shaders[i]) {
+            VALUE shaderObj = wrapObject(shaders[i], CustomShaderType);
+            rb_ary_push(ary, shaderObj);
+        } else {
+            rb_ary_push(ary, Qnil);
+        }
+    }
+    
+    return ary;
+}
+RB_METHOD_GUARD_END
+
 void spriteBindingInit() {
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
@@ -161,4 +181,6 @@ void spriteBindingInit() {
     INIT_PROP_BIND(Sprite, WavePhase, "wave_phase");
 
     INIT_PROP_BIND(Sprite, Shader, "shader");
+    
+    _rb_define_method(klass, "shaders", spriteGetShaders);
 }

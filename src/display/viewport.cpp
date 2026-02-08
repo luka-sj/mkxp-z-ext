@@ -44,6 +44,7 @@ struct ViewportPrivate
 	Color *color;
 	Tone *tone;
 	CustomShader *shader;
+	std::vector<CustomShader*> shaders;
 
 	IntRect screenRect;
 	int isOnScreen;
@@ -154,6 +155,7 @@ DEF_ATTR_SIMPLE(Viewport, Rect,  Rect&,  *p->rect)
 DEF_ATTR_SIMPLE(Viewport, Color, Color&, *p->color)
 DEF_ATTR_SIMPLE(Viewport, Tone,  Tone&,  *p->tone)
 DEF_ATTR_SIMPLE(Viewport, Shader, CustomShader*, p->shader)
+DEF_ATTR_SIMPLE(Viewport, Shaders, std::vector<CustomShader*>&, p->shaders)
 
 void Viewport::setOX(int value)
 {
@@ -194,8 +196,9 @@ void Viewport::composite()
 
 	bool renderEffect = p->needsEffectRender(flashing);
 	bool hasShader = p->shader && !p->shader->isDisposed();
+	bool hasShaders = !p->shaders.empty();
 
-	if (elements.getSize() == 0 && !renderEffect && !hasShader)
+	if (elements.getSize() == 0 && !renderEffect && !hasShader && !hasShaders)
 		return;
 
 	/* Setup scissor */
@@ -204,7 +207,18 @@ void Viewport::composite()
 
 	Scene::composite();
 
-	/* Apply custom shader if set */
+	/* Apply custom shaders from the shaders vector */
+	if (hasShaders)
+	{
+		for (size_t i = 0; i < p->shaders.size(); ++i)
+		{
+			CustomShader *customShader = p->shaders[i];
+			if (customShader && !customShader->isDisposed())
+				scene->requestViewportShaderRender(customShader);
+		}
+	}
+
+	/* Apply custom shader if set (backward compatibility) */
 	if (hasShader)
 		scene->requestViewportShaderRender(p->shader);
 
