@@ -196,9 +196,16 @@ void Viewport::composite()
 
 	bool renderEffect = p->needsEffectRender(flashing);
 	bool hasShader = p->shader && !p->shader->isDisposed();
-	bool hasShaders = !p->shaders.empty();
 
-	if (elements.getSize() == 0 && !renderEffect && !hasShader && !hasShaders)
+	// Count valid shaders in the vector
+	int validShaderCount = 0;
+	for (size_t i = 0; i < p->shaders.size(); ++i)
+	{
+		if (p->shaders[i] && !p->shaders[i]->isDisposed())
+			validShaderCount++;
+	}
+
+	if (elements.getSize() == 0 && !renderEffect && !hasShader && validShaderCount == 0)
 		return;
 
 	/* Setup scissor */
@@ -208,7 +215,7 @@ void Viewport::composite()
 	Scene::composite();
 
 	/* Apply custom shaders from the shaders vector */
-	if (hasShaders)
+	if (validShaderCount > 0)
 	{
 		for (size_t i = 0; i < p->shaders.size(); ++i)
 		{
