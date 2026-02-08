@@ -110,25 +110,17 @@ RB_METHOD_GUARD(spriteHeight) {
 }
 RB_METHOD_GUARD_END
 
-RB_METHOD_GUARD(spriteGetShaders) {
+RB_METHOD(spriteGetShaders) {
     RB_UNUSED_PARAM;
 
-    Sprite *s = getPrivateData<Sprite>(self);
-    std::vector<CustomShader*>& shaders = s->getShaders();
-
-    VALUE ary = rb_ary_new();
-    for (size_t i = 0; i < shaders.size(); ++i) {
-        if (shaders[i]) {
-            VALUE shaderObj = wrapObject(shaders[i], CustomShaderType);
-            rb_ary_push(ary, shaderObj);
-        } else {
-            rb_ary_push(ary, Qnil);
-        }
+    /* Return the stored Ruby array directly */
+    VALUE ary = rb_iv_get(self, "@shaders");
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
     }
-
     return ary;
 }
-RB_METHOD_GUARD_END
 
 RB_METHOD_GUARD(spriteSetShaders) {
     Sprite *s = getPrivateData<Sprite>(self);
@@ -139,12 +131,19 @@ RB_METHOD_GUARD(spriteSetShaders) {
     std::vector<CustomShader*>& shaders = s->getShaders();
     shaders.clear();
 
-    if (NIL_P(ary))
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
         return ary;
+    }
 
     if (!RB_TYPE_P(ary, RUBY_T_ARRAY))
         rb_raise(rb_eTypeError, "Expected Array for shaders");
 
+    /* Store the Ruby array */
+    rb_iv_set(self, "@shaders", ary);
+
+    /* Sync to C++ vector */
     long len = RARRAY_LEN(ary);
     for (long i = 0; i < len; ++i) {
         VALUE elem = rb_ary_entry(ary, i);

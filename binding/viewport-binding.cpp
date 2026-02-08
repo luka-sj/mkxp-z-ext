@@ -81,25 +81,17 @@ DEF_GFX_PROP_OBJ_REF(Viewport, CustomShader, Shader, "@shader")
 DEF_GFX_PROP_I(Viewport, OX)
 DEF_GFX_PROP_I(Viewport, OY)
 
-RB_METHOD_GUARD(viewportGetShaders) {
+RB_METHOD(viewportGetShaders) {
     RB_UNUSED_PARAM;
 
-    Viewport *v = getPrivateData<Viewport>(self);
-    std::vector<CustomShader*>& shaders = v->getShaders();
-
-    VALUE ary = rb_ary_new();
-    for (size_t i = 0; i < shaders.size(); ++i) {
-        if (shaders[i]) {
-            VALUE shaderObj = wrapObject(shaders[i], CustomShaderType);
-            rb_ary_push(ary, shaderObj);
-        } else {
-            rb_ary_push(ary, Qnil);
-        }
+    /* Return the stored Ruby array directly */
+    VALUE ary = rb_iv_get(self, "@shaders");
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
     }
-
     return ary;
 }
-RB_METHOD_GUARD_END
 
 RB_METHOD_GUARD(viewportSetShaders) {
     Viewport *v = getPrivateData<Viewport>(self);
@@ -110,12 +102,19 @@ RB_METHOD_GUARD(viewportSetShaders) {
     std::vector<CustomShader*>& shaders = v->getShaders();
     shaders.clear();
 
-    if (NIL_P(ary))
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
         return ary;
+    }
 
     if (!RB_TYPE_P(ary, RUBY_T_ARRAY))
         rb_raise(rb_eTypeError, "Expected Array for shaders");
 
+    /* Store the Ruby array */
+    rb_iv_set(self, "@shaders", ary);
+
+    /* Sync to C++ vector */
     long len = RARRAY_LEN(ary);
     for (long i = 0; i < len; ++i) {
         VALUE elem = rb_ary_entry(ary, i);
