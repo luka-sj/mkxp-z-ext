@@ -961,17 +961,24 @@ void Sprite::draw()
 
     // Check for custom shaders (both single and multiple)
     bool hasCustomShader = p->shader && !p->shader->isDisposed();
-    bool hasCustomShaders = !p->shaders.empty();
-    
+
+    // Count valid shaders in the vector
+    int validShaderCount = 0;
+    for (size_t i = 0; i < p->shaders.size(); ++i)
+    {
+        if (p->shaders[i] && !p->shaders[i]->isDisposed())
+            validShaderCount++;
+    }
+
     // Process shaders from the shaders vector
-    if (hasCustomShaders)
+    if (validShaderCount > 0)
     {
         for (size_t i = 0; i < p->shaders.size(); ++i)
         {
             CustomShader *customShader = p->shaders[i];
             if (!customShader || customShader->isDisposed())
                 continue;
-            
+
             CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
             shader->bind();
             shader->applyViewportProj();

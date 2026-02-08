@@ -83,10 +83,10 @@ DEF_GFX_PROP_I(Viewport, OY)
 
 RB_METHOD_GUARD(viewportGetShaders) {
     RB_UNUSED_PARAM;
-    
+
     Viewport *v = getPrivateData<Viewport>(self);
     std::vector<CustomShader*>& shaders = v->getShaders();
-    
+
     VALUE ary = rb_ary_new();
     for (size_t i = 0; i < shaders.size(); ++i) {
         if (shaders[i]) {
@@ -96,7 +96,41 @@ RB_METHOD_GUARD(viewportGetShaders) {
             rb_ary_push(ary, Qnil);
         }
     }
-    
+
+    return ary;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportSetShaders) {
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    VALUE ary;
+    rb_get_args(argc, argv, "o", &ary RB_ARG_END);
+
+    std::vector<CustomShader*>& shaders = v->getShaders();
+    shaders.clear();
+
+    if (NIL_P(ary))
+        return ary;
+
+    if (!RB_TYPE_P(ary, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array for shaders");
+
+    long len = RARRAY_LEN(ary);
+    for (long i = 0; i < len; ++i) {
+        VALUE elem = rb_ary_entry(ary, i);
+        if (NIL_P(elem)) {
+            shaders.push_back(0);
+        } else {
+#if RAPI_FULL > 187
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, CustomShaderType);
+#else
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, "Shader");
+#endif
+            shaders.push_back(shader);
+        }
+    }
+
     return ary;
 }
 RB_METHOD_GUARD_END
@@ -121,6 +155,7 @@ void viewportBindingInit() {
     INIT_PROP_BIND(Viewport, Color, "color");
     INIT_PROP_BIND(Viewport, Tone, "tone");
     INIT_PROP_BIND(Viewport, Shader, "shader");
-    
+
     _rb_define_method(klass, "shaders", viewportGetShaders);
+    _rb_define_method(klass, "shaders=", viewportSetShaders);
 }

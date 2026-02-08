@@ -112,10 +112,10 @@ RB_METHOD_GUARD_END
 
 RB_METHOD_GUARD(spriteGetShaders) {
     RB_UNUSED_PARAM;
-    
+
     Sprite *s = getPrivateData<Sprite>(self);
     std::vector<CustomShader*>& shaders = s->getShaders();
-    
+
     VALUE ary = rb_ary_new();
     for (size_t i = 0; i < shaders.size(); ++i) {
         if (shaders[i]) {
@@ -125,7 +125,41 @@ RB_METHOD_GUARD(spriteGetShaders) {
             rb_ary_push(ary, Qnil);
         }
     }
-    
+
+    return ary;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteSetShaders) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE ary;
+    rb_get_args(argc, argv, "o", &ary RB_ARG_END);
+
+    std::vector<CustomShader*>& shaders = s->getShaders();
+    shaders.clear();
+
+    if (NIL_P(ary))
+        return ary;
+
+    if (!RB_TYPE_P(ary, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array for shaders");
+
+    long len = RARRAY_LEN(ary);
+    for (long i = 0; i < len; ++i) {
+        VALUE elem = rb_ary_entry(ary, i);
+        if (NIL_P(elem)) {
+            shaders.push_back(0);
+        } else {
+#if RAPI_FULL > 187
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, CustomShaderType);
+#else
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, "Shader");
+#endif
+            shaders.push_back(shader);
+        }
+    }
+
     return ary;
 }
 RB_METHOD_GUARD_END
@@ -181,6 +215,7 @@ void spriteBindingInit() {
     INIT_PROP_BIND(Sprite, WavePhase, "wave_phase");
 
     INIT_PROP_BIND(Sprite, Shader, "shader");
-    
+
     _rb_define_method(klass, "shaders", spriteGetShaders);
+    _rb_define_method(klass, "shaders=", spriteSetShaders);
 }
