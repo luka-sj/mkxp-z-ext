@@ -44,6 +44,8 @@ public:
 	DECL_ATTR( Rect,  Rect&  )
 	DECL_ATTR( OX,    int    )
 	DECL_ATTR( OY,    int    )
+	DECL_ATTR( ZoomX, float  )
+	DECL_ATTR( ZoomY, float  )
 	DECL_ATTR( Color, Color& )
 	DECL_ATTR( Tone,  Tone&  )
 	DECL_ATTR( Shader, class CustomShader* )

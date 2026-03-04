@@ -47,9 +47,14 @@ public:
 		/* Origin of contents */
 		Vec2i orig;
 
+		/* Viewport zoom factor */
+		Vec2 zoom;
+
+		Geometry() : zoom(1, 1) {}
+
 		Vec2i offset() const
 		{
-			return rect.pos() - orig;
+			return rect.pos() - Vec2i(orig.x * zoom.x, orig.y * zoom.y);
 		}
 	};
 

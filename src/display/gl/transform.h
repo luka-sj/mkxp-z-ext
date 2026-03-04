@@ -58,6 +58,7 @@ public:
 	Transform()
 	    : scale(1, 1),
 	      rotation(0),
+	      sceneScale(1, 1),
 	      dirty(true)
 	{
 		memset(matrix, 0, sizeof(matrix));
@@ -111,6 +112,12 @@ public:
 		dirty = true;
 	}
 
+	void setSceneScale(const Vec2 &value)
+	{
+		sceneScale = value;
+		dirty = true;
+	}
+
 	const float *getMatrix()
 	{
 		if (dirty)
@@ -132,15 +139,18 @@ private:
 		//if (rotation < 0)
 		//	rotation += 360;
 
+		float effScaleX = scale.x * sceneScale.x;
+		float effScaleY = scale.y * sceneScale.y;
+
 		float angle  = rotation * 3.141592654f / 180.0f;
 		float cosine = (float) cos(angle);
 		float sine   = (float) sin(angle);
-		float sxc    = scale.x * cosine;
-		float syc    = scale.y * cosine;
-		float sxs    = scale.x * sine;
-		float sys    = scale.y * sine;
-		float tx     = -origin.x * sxc - origin.y * sys + position.x + offset.x;
-		float ty     =  origin.x * sxs - origin.y * syc + position.y + offset.y;
+		float sxc    = effScaleX * cosine;
+		float syc    = effScaleY * cosine;
+		float sxs    = effScaleX * sine;
+		float sys    = effScaleY * sine;
+		float tx     = -origin.x * sxc - origin.y * sys + position.x * sceneScale.x + offset.x;
+		float ty     =  origin.x * sxs - origin.y * syc + position.y * sceneScale.y + offset.y;
 
 		matrix[0]  =  sxc;
 		matrix[1]  = -sxs;
@@ -157,6 +167,9 @@ private:
 
 	/* Silently added to position */
 	Vec2i offset;
+
+	/* Scale from parent viewport zoom */
+	Vec2 sceneScale;
 
 	float matrix[16];
 

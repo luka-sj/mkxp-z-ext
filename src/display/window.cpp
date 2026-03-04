@@ -183,6 +183,7 @@ struct WindowPrivate
 	sigslot::connection cursorRectCon;
 
 	Vec2i sceneOffset;
+	Vec2 sceneZoom;
 
 	Vec2i position;
 	Vec2i size;
@@ -258,6 +259,7 @@ struct WindowPrivate
 	      cursorRect(&tmp.rect),
 	      active(true),
 	      pause(false),
+	      sceneZoom(1, 1),
 	      opacity(255),
 	      backOpacity(255),
 	      contentsOpacity(255),
@@ -577,7 +579,9 @@ struct WindowPrivate
 		SimpleAlphaShader &shader = shState->shaders().simpleAlpha;
 		shader.bind();
 		shader.applyViewportProj();
-		shader.setTranslation(position + sceneOffset);
+		shader.setViewportScale(sceneZoom);
+		Vec2i zoomedPos(position.x * sceneZoom.x, position.y * sceneZoom.y);
+		shader.setTranslation(zoomedPos + sceneOffset);
 
 		if (useBaseTex)
 		{
@@ -613,10 +617,14 @@ struct WindowPrivate
 		}
 
 		/* Effective on screen coordinates */
-		const Vec2i efPos = position + sceneOffset;
+		Vec2i zoomedPos(position.x * sceneZoom.x, position.y * sceneZoom.y);
+		const Vec2i efPos = zoomedPos + sceneOffset;
+		Vec2i zoomedSize(size.x * sceneZoom.x, size.y * sceneZoom.y);
 
-		const IntRect windowRect(efPos, size);
-		const IntRect contentsRect(efPos + Vec2i(16), size - Vec2i(32));
+		const IntRect windowRect(efPos, zoomedSize);
+		int margin = 16;
+		Vec2i zoomedMargin(margin * sceneZoom.x, margin * sceneZoom.y);
+		const IntRect contentsRect(efPos + zoomedMargin, zoomedSize - zoomedMargin * 2);
 
 		glState.scissorTest.pushSet(true);
 		glState.scissorBox.push();
@@ -625,6 +633,7 @@ struct WindowPrivate
 		SimpleAlphaShader &shader = shState->shaders().simpleAlpha;
 		shader.bind();
 		shader.applyViewportProj();
+		shader.setViewportScale(sceneZoom);
 
 		if (!nullOrDisposed(windowskin))
 		{
@@ -644,7 +653,8 @@ struct WindowPrivate
 			/* Draw contents bitmap */
 			glState.scissorBox.setIntersect(contentsRect);
 
-			shader.setTranslation(efPos + (Vec2i(16) - contentsOffset));
+			Vec2i zoomedContentsOffset(contentsOffset.x * sceneZoom.x, contentsOffset.y * sceneZoom.y);
+			shader.setTranslation(efPos + (zoomedMargin - zoomedContentsOffset));
 
 			contents->bindTex(shader);
 			contentsQuad.draw();
@@ -903,6 +913,7 @@ void Window::draw()
 void Window::onGeometryChange(const Scene::Geometry &geo)
 {
 	p->sceneOffset = geo.offset();
+	p->sceneZoom = geo.zoom;
 }
 
 void Window::setZ(int value)

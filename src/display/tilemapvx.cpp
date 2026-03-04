@@ -243,7 +243,10 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 			buffersDirty = true;
 		}
 
-		dispPos = sceneGeo.rect.pos() - wrap(combOrigin, 32) - Vec2i(0, 32);
+		Vec2i wrapOffset = wrap(combOrigin, 32) + Vec2i(0, 32);
+		const Vec2 &zoom = sceneGeo.zoom;
+		dispPos.x = sceneGeo.rect.x - (int)(wrapOffset.x * zoom.x);
+		dispPos.y = sceneGeo.rect.y - (int)(wrapOffset.y * zoom.y);
 	}
 
 	static size_t quadBytes(size_t quads)
@@ -348,6 +351,7 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 
 		shader->setTexSize(Vec2i(atlas.width, atlas.height));
 		shader->applyViewportProj();
+		shader->setViewportScale(sceneGeo.zoom);
 		shader->setTranslation(dispPos);
 
 		if (atlas.selfHires != nullptr) {
@@ -372,6 +376,7 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 		shader.bind();
 		shader.setTexSize(Vec2i(atlas.width, atlas.height));
 		shader.applyViewportProj();
+		shader.setViewportScale(sceneGeo.zoom);
 		shader.setTranslation(dispPos);
 
 		if (atlas.selfHires != nullptr) {
@@ -393,7 +398,7 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 		/* Flash tiles are drawn twice at half opacity, once over the
 		 * ground layer, and once over the above layer */
 		float alpha = (flashAlpha[flashAlphaIdx] / 255.f) / 2;
-		flashMap.draw(alpha, dispPos);
+		flashMap.draw(alpha, dispPos, sceneGeo.zoom);
 	}
 
 	void onGeometryChange(const Scene::Geometry &geo)

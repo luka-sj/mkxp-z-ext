@@ -168,7 +168,7 @@ struct FlashMap
 		dirty = false;
 	}
 
-	void draw(float alpha, const Vec2i &trans)
+	void draw(float alpha, const Vec2i &trans, const Vec2 &viewportZoom = Vec2(1, 1))
 	{
 		const size_t count = quadCount();
 
@@ -181,6 +181,7 @@ struct FlashMap
 		FlashMapShader &shader = shState->shaders().flashMap;
 		shader.bind();
 		shader.applyViewportProj();
+		shader.setViewportScale(viewportZoom);
 		shader.setAlpha(alpha);
 		shader.setTranslation(trans);
 

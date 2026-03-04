@@ -293,6 +293,7 @@ void ShaderBase::init()
 {
 	GET_U(texSizeInv);
 	GET_U(translation);
+	u_viewportScale = gl.GetUniformLocation(program, "viewportScale");
 
 	projMat.u_mat = gl.GetUniformLocation(program, "projMat");
 }
@@ -307,6 +308,9 @@ void ShaderBase::applyViewportProj()
 	else {
 		projMat.set(Vec2i(vp.w, vp.h));
 	}
+
+	/* Default viewport scale to 1.0 (no zoom) */
+	gl.Uniform2f(u_viewportScale, 1.f, 1.f);
 }
 
 bool ShaderBase::framebufferScalingAllowed()
@@ -322,6 +326,11 @@ void ShaderBase::setTexSize(const Vec2i &value)
 void ShaderBase::setTranslation(const Vec2i &value)
 {
 	gl.Uniform2f(u_translation, value.x, value.y);
+}
+
+void ShaderBase::setViewportScale(const Vec2 &value)
+{
+	gl.Uniform2f(u_viewportScale, value.x, value.y);
 }
 
 

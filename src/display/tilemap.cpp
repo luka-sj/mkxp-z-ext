@@ -882,7 +882,6 @@ struct TilemapPrivate
 		{
 			TilemapShader &tilemapShader = shState->shaders().tilemap;
 			tilemapShader.bind();
-			tilemapShader.applyViewportProj();
 			tilemapShader.setTone(tone->norm);
 			tilemapShader.setColor(color->norm);
 			tilemapShader.setOpacity(opacity.norm);
@@ -897,6 +896,7 @@ struct TilemapPrivate
 		}
 
 		shaderVar->applyViewportProj();
+		shaderVar->setViewportScale(elem.sceneGeo.zoom);
 	}
 
 	void bindAtlas(ShaderBase &shader)
@@ -1019,7 +1019,12 @@ struct TilemapPrivate
 			updateFlashMapViewport();
 		}
 
-		dispPos = elem.sceneGeo.rect.pos() - wrap(combOrigin, 32);
+		/* With viewport zoom, tile positions are scaled by viewportScale in the shader,
+		 * so dispPos needs to be the zoomed offset */
+		Vec2i wrapOffset = wrap(combOrigin, 32);
+		const Vec2 &zoom = elem.sceneGeo.zoom;
+		dispPos.x = elem.sceneGeo.rect.x - (int)(wrapOffset.x * zoom.x);
+		dispPos.y = elem.sceneGeo.rect.y - (int)(wrapOffset.y * zoom.y);
 	}
 
 	void prepare()
@@ -1108,7 +1113,7 @@ void GroundLayer::draw()
 
 	GLMeta::vaoUnbind(p->tiles.vao);
 
-	p->flashMap.draw(flashAlpha[p->flashAlphaIdx] / 255.f, p->dispPos);
+	p->flashMap.draw(flashAlpha[p->flashAlphaIdx] / 255.f, p->dispPos, p->elem.sceneGeo.zoom);
 
 	glState.blendMode.pop();
 }

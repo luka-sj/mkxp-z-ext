@@ -88,12 +88,13 @@ public:
 
 	void setTexSize(const Vec2i &value);
 	void setTranslation(const Vec2i &value);
+	void setViewportScale(const Vec2 &value);
 
 protected:
 	void init();
 	virtual bool framebufferScalingAllowed();
 
-	GLint u_texSizeInv, u_translation;
+	GLint u_texSizeInv, u_translation, u_viewportScale;
 };
 
 class FlatColorShader : public ShaderBase

@@ -46,6 +46,8 @@ struct ViewportPrivate
 	CustomShader *shader;
 	std::vector<CustomShader*> shaders;
 
+	float zoomX, zoomY;
+
 	IntRect screenRect;
 	int isOnScreen;
 
@@ -57,6 +59,7 @@ struct ViewportPrivate
 	      color(&tmp.color),
 	      tone(&tmp.tone),
 	      shader(0),
+	      zoomX(1.0f), zoomY(1.0f),
 	      isOnScreen(false)
 	{
 		rect->set(x, y, width, height);
@@ -88,7 +91,7 @@ struct ViewportPrivate
 		                screenRect.w, screenRect.h };
 
 		SDL_Rect r2 = { rect->x,     rect->y,
-		                rect->width, rect->height };
+		                (int)(rect->width * zoomX), (int)(rect->height * zoomY) };
 
 		SDL_Rect result;
 		isOnScreen = SDL_IntersectRect(&r1, &r2, &result);
@@ -131,6 +134,7 @@ void Viewport::initViewport(int x, int y, int width, int height)
 
 	/* Set our own geometry */
 	geometry.rect = IntRect(x, y, width, height);
+	geometry.zoom = Vec2(1, 1);
 
 	/* Handle parent geometry */
 	onGeometryChange(scene->getGeometry());
@@ -150,6 +154,8 @@ void Viewport::update()
 
 DEF_ATTR_RD_SIMPLE(Viewport, OX,   int,   geometry.orig.x)
 DEF_ATTR_RD_SIMPLE(Viewport, OY,   int,   geometry.orig.y)
+DEF_ATTR_RD_SIMPLE(Viewport, ZoomX, float, p->zoomX)
+DEF_ATTR_RD_SIMPLE(Viewport, ZoomY, float, p->zoomY)
 
 DEF_ATTR_SIMPLE(Viewport, Rect,  Rect&,  *p->rect)
 DEF_ATTR_SIMPLE(Viewport, Color, Color&, *p->color)
@@ -177,6 +183,32 @@ void Viewport::setOY(int value)
 
 	geometry.orig.y = value;
 	notifyGeometryChange();
+}
+
+void Viewport::setZoomX(float value)
+{
+	guardDisposed();
+
+	if (p->zoomX == value)
+		return;
+
+	p->zoomX = value;
+	geometry.zoom.x = value;
+	notifyGeometryChange();
+	p->recomputeOnScreen();
+}
+
+void Viewport::setZoomY(float value)
+{
+	guardDisposed();
+
+	if (p->zoomY == value)
+		return;
+
+	p->zoomY = value;
+	geometry.zoom.y = value;
+	notifyGeometryChange();
+	p->recomputeOnScreen();
 }
 
 void Viewport::initDynAttribs()
@@ -208,9 +240,12 @@ void Viewport::composite()
 	if (elements.getSize() == 0 && !renderEffect && !hasShader && validShaderCount == 0)
 		return;
 
-	/* Setup scissor */
+	/* Setup scissor (zoomed rect) */
+	IntRect zoomedRect(p->rect->x, p->rect->y,
+	                   (int)(p->rect->width * p->zoomX),
+	                   (int)(p->rect->height * p->zoomY));
 	glState.scissorTest.pushSet(true);
-	glState.scissorBox.pushSet(p->rect->toIntRect());
+	glState.scissorBox.pushSet(zoomedRect);
 
 	Scene::composite();
 

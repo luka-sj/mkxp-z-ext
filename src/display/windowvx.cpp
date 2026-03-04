@@ -223,6 +223,7 @@ struct WindowVXPrivate
 	uint8_t cursorAlphaIdx;
 
 	Vec2i sceneOffset;
+	Vec2 sceneZoom;
 
 	WindowVXPrivate(int x, int y, int w, int h)
 	    : windowskin(0),
@@ -248,7 +249,8 @@ struct WindowVXPrivate
 	      cursorVertArrayDirty(false),
 	      pauseAlphaIdx(0),
 	      pauseQuadIdx(0),
-	      cursorAlphaIdx(0)
+	      cursorAlphaIdx(0),
+	      sceneZoom(1, 1)
 	{
 		/* 4 scroll arrows + pause */
 		ctrlVert.resize(4 + 1);
@@ -748,11 +750,12 @@ struct WindowVXPrivate
 		bool windowskinValid = !nullOrDisposed(windowskin);
 		bool contentsValid = !nullOrDisposed(contents);
 
-		Vec2i trans = geo.pos() + sceneOffset;
+		Vec2i trans = Vec2i(geo.x * sceneZoom.x, geo.y * sceneZoom.y) + sceneOffset;
 
 		SimpleAlphaShader &shader = shState->shaders().simpleAlpha;
 		shader.bind();
 		shader.applyViewportProj();
+		shader.setViewportScale(sceneZoom);
 
 		if (windowskinValid)
 		{
@@ -779,9 +782,11 @@ struct WindowVXPrivate
 
 		if (drawCursor || contentsValid)
 		{
-			/* Translate cliprect from local into screen space */
+			/* Translate cliprect from local into screen space, applying viewport zoom */
 			IntRect clip = clipRect;
-			clip.setPos(clip.pos() + trans);
+			Vec2i zoomedClipPos(clip.x * sceneZoom.x, clip.y * sceneZoom.y);
+			Vec2i zoomedClipSize(clip.w * sceneZoom.x, clip.h * sceneZoom.y);
+			clip = IntRect(zoomedClipPos + trans, zoomedClipSize);
 
 			glState.scissorBox.push();
 			glState.scissorTest.pushSet(true);
@@ -789,19 +794,26 @@ struct WindowVXPrivate
 			if (rgssVer >= 3)
 				glState.scissorBox.setIntersect(clip);
 			else
-				glState.scissorBox.setIntersect(IntRect(trans, geo.size()));
+			{
+				Vec2i zoomedGeoSize(geo.w * sceneZoom.x, geo.h * sceneZoom.y);
+				glState.scissorBox.setIntersect(IntRect(trans, zoomedGeoSize));
+			}
 
 			IntRect pad = padRect;
-			pad.setPos(pad.pos() + trans);
+			Vec2i zoomedPadPos(pad.x * sceneZoom.x, pad.y * sceneZoom.y);
+			pad.setPos(zoomedPadPos + trans);
 
 			if (drawCursor)
 			{
 				Vec2i contTrans = pad.pos();
-				contTrans.x += cursorRect->x;
-				contTrans.y += cursorRect->y;
+				contTrans.x += cursorRect->x * sceneZoom.x;
+				contTrans.y += cursorRect->y * sceneZoom.y;
 
 				if (rgssVer >= 3)
-					contTrans -= contentsOff;
+				{
+					Vec2i zoomedContentsOff(contentsOff.x * sceneZoom.x, contentsOff.y * sceneZoom.y);
+					contTrans -= zoomedContentsOff;
+				}
 
 				shader.setTranslation(contTrans);
 
@@ -816,7 +828,8 @@ struct WindowVXPrivate
 					glState.scissorBox.setIntersect(clip);
 
 				Vec2i contTrans = pad.pos();
-				contTrans -= contentsOff;
+				Vec2i zoomedContentsOff(contentsOff.x * sceneZoom.x, contentsOff.y * sceneZoom.y);
+				contTrans -= zoomedContentsOff;
 				shader.setTranslation(contTrans);
 
 				TEX::setSmooth(false); // XXX
@@ -1139,6 +1152,7 @@ void WindowVX::draw()
 void WindowVX::onGeometryChange(const Scene::Geometry &geo)
 {
 	p->sceneOffset = geo.offset();
+	p->sceneZoom = geo.zoom;
 }
 
 void WindowVX::releaseResources()

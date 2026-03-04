@@ -2,6 +2,7 @@ uniform mat4 projMat;
 
 uniform vec2 texSizeInv;
 uniform vec2 translation;
+uniform vec2 viewportScale;
 
 uniform highp int aniIndex;
 
@@ -34,7 +35,7 @@ void main()
     tex.x += atAniOffsetX * float(col * pred);
     tex.y += atAniOffsetY * float(row * pred);
 
-    gl_Position = projMat * vec4(position + translation, 0, 1);
+    gl_Position = projMat * vec4(position * viewportScale + translation, 0, 1);
 
     v_texCoord = tex * texSizeInv;
 }

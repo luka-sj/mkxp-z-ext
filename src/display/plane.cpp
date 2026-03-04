@@ -114,17 +114,17 @@ struct PlanePrivate
 		if (nullOrDisposed(bitmap))
 			return;
 
-		/* Scaled (zoomed) bitmap dimensions */
-		float sw = bitmap->width()  * zoomX;
-		float sh = bitmap->height() * zoomY;
+		/* Scaled (zoomed) bitmap dimensions, including viewport zoom */
+		float sw = bitmap->width()  * zoomX * sceneGeo.zoom.x;
+		float sh = bitmap->height() * zoomY * sceneGeo.zoom.y;
 
 		/* Plane offset wrapped by scaled bitmap dims */
-		float wox = fwrap(ox, sw);
-		float woy = fwrap(oy, sh);
+		float wox = fwrap(ox * sceneGeo.zoom.x, sw);
+		float woy = fwrap(oy * sceneGeo.zoom.y, sh);
 
-		/* Viewport dimensions */
-		int vpw = sceneGeo.rect.w;
-		int vph = sceneGeo.rect.h;
+		/* Viewport dimensions (zoomed) */
+		int vpw = sceneGeo.rect.w * sceneGeo.zoom.x;
+		int vph = sceneGeo.rect.h * sceneGeo.zoom.y;
 
 		/* Amount the scaled bitmap is tiled (repeated) */
 		size_t tilesX = ceil((vpw - sw + wox) / sw) + 1;
@@ -323,7 +323,12 @@ void Plane::draw()
 void Plane::onGeometryChange(const Scene::Geometry &geo)
 {
 	if (gl.npot_repeat)
-		Quad::setPosRect(&p->qArray.vertices[0], FloatRect(geo.rect));
+	{
+		FloatRect zoomedRect(geo.rect.x, geo.rect.y,
+		                     geo.rect.w * geo.zoom.x,
+		                     geo.rect.h * geo.zoom.y);
+		Quad::setPosRect(&p->qArray.vertices[0], zoomedRect);
+	}
 
 	p->sceneGeo = geo;
 	p->quadSourceDirty = true;
