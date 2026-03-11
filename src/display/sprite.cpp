@@ -109,6 +109,12 @@ struct SpritePrivate
     CustomShader *shader;
     std::vector<CustomShader*> shaders;
 
+    /* Temp FBO for rendering custom shaders before built-in effects */
+    TEXFBO shaderTex;
+    bool shaderTexInited;
+    int shaderTexW, shaderTexH;
+    Quad shaderQuad;
+
     struct
     {
         int amp;
@@ -152,7 +158,10 @@ struct SpritePrivate
     isVisible(false),
     color(&tmp.color),
     tone(&tmp.tone),
-    shader(0)
+    shader(0),
+    shaderTexInited(false),
+    shaderTexW(0),
+    shaderTexH(0)
 
     {
         updateSrcRectCon();
@@ -174,8 +183,11 @@ struct SpritePrivate
     {
         srcRectCon.disconnect();
         prepareCon.disconnect();
-        
+
         bitmapDisposal();
+
+        if (shaderTexInited)
+            TEXFBO::fini(shaderTex);
     }
     
     void bitmapDisposal()
@@ -970,15 +982,21 @@ void Sprite::draw()
             validShaderCount++;
     }
 
-    // Process shaders from the shaders vector
-    if (validShaderCount > 0)
-    {
-        for (size_t i = 0; i < p->shaders.size(); ++i)
-        {
-            CustomShader *customShader = p->shaders[i];
-            if (!customShader || customShader->isDisposed())
-                continue;
+    bool hasAnyCustomShader = (validShaderCount > 0) || hasCustomShader;
 
+    bool renderEffect = p->color->hasEffect() ||
+    p->tone->hasEffect()  ||
+    flashing              ||
+    p->bushDepth != 0     ||
+    p->invert             ||
+    (p->pattern && !p->pattern->isDisposed());
+
+    /* If custom shaders present but no built-in effects needed,
+     * render custom shaders directly to screen (fast path) */
+    if (hasAnyCustomShader && !renderEffect && p->opacity == 255)
+    {
+        auto drawCustomShader = [&](CustomShader *customShader)
+        {
             CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
             shader->bind();
             shader->applyViewportProj();
@@ -987,16 +1005,12 @@ void Sprite::draw()
             shader->setTime(SDL_GetTicks() / 1000.0f);
             shader->setOpacity(p->opacity.norm);
 
-            // Apply custom uniform parameters
             shader->applyUniforms(customShader->getUniforms());
-
-            // Apply custom bitmap parameters (textures start at unit 1)
             shader->applyBitmaps(customShader->getBitmaps(), 1);
 
             base = shader;
 
             glState.blendMode.pushSet(p->blendType);
-
             p->bitmap->bindTex(*base, false);
 
             if (p->wave.active)
@@ -1005,49 +1019,112 @@ void Sprite::draw()
                 p->quad.draw();
 
             glState.blendMode.pop();
+        };
+
+        if (validShaderCount > 0)
+        {
+            for (size_t i = 0; i < p->shaders.size(); ++i)
+            {
+                if (p->shaders[i] && !p->shaders[i]->isDisposed())
+                    drawCustomShader(p->shaders[i]);
+            }
+        }
+        else if (hasCustomShader)
+        {
+            drawCustomShader(p->shader);
         }
         return;
     }
 
-    // Fallback to single shader for backward compatibility
-    if (hasCustomShader)
+    /* If custom shaders present AND built-in effects needed,
+     * render custom shaders to temp FBO first, then apply
+     * built-in effects (tone/color/etc) on top */
+    bool useTempFBO = hasAnyCustomShader && (renderEffect || p->opacity != 255);
+
+    if (useTempFBO)
     {
-        CustomSpriteShaderImpl *shader = p->shader->getSpriteShader();
-        shader->bind();
-        shader->applyViewportProj();
-        shader->setSpriteMat(p->trans.getMatrix());
-        shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
-        shader->setTime(SDL_GetTicks() / 1000.0f);
-        shader->setOpacity(p->opacity.norm);
+        int bw = p->bitmap->width();
+        int bh = p->bitmap->height();
 
-        // Apply custom uniform parameters
-        shader->applyUniforms(p->shader->getUniforms());
+        /* Lazy-init and resize temp FBO */
+        if (!p->shaderTexInited)
+        {
+            TEXFBO::init(p->shaderTex);
+            p->shaderTexInited = true;
+            p->shaderTexW = 0;
+            p->shaderTexH = 0;
+        }
 
-        // Apply custom bitmap parameters (textures start at unit 1)
-        shader->applyBitmaps(p->shader->getBitmaps(), 1);
+        if (p->shaderTexW != bw || p->shaderTexH != bh)
+        {
+            TEXFBO::allocEmpty(p->shaderTex, bw, bh);
+            TEXFBO::linkFBO(p->shaderTex);
+            p->shaderTexW = bw;
+            p->shaderTexH = bh;
+        }
 
-        base = shader;
+        /* Save current FBO and viewport state */
+        FBO::ID prevFBO = FBO::boundFramebufferID;
+        glState.viewport.pushSet(IntRect(0, 0, bw, bh));
 
-        glState.blendMode.pushSet(p->blendType);
+        /* Bind temp FBO and clear */
+        FBO::bind(p->shaderTex.fbo);
+        gl.ClearColor(0, 0, 0, 0);
+        FBO::clear();
 
-        p->bitmap->bindTex(*base, false);
+        /* Set up quad covering the full bitmap area */
+        FloatRect texRect(0, 0, bw, bh);
+        p->shaderQuad.setTexPosRect(texRect, texRect);
 
-        if (p->wave.active)
-            p->wave.qArray.draw();
-        else
-            p->quad.draw();
+        /* Identity sprite matrix for rendering into the FBO */
+        GLfloat identityMat[16] = {
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        };
 
-        glState.blendMode.pop();
-        return;
+        /* Render each custom shader into the temp FBO */
+        auto drawCustomShaderToFBO = [&](CustomShader *customShader)
+        {
+            CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
+            shader->bind();
+            shader->projMat.set(Vec2i(bw, bh));
+            shader->setSpriteMat(identityMat);
+            shader->setTexSize(Vec2i(bw, bh));
+            shader->setTime(SDL_GetTicks() / 1000.0f);
+            shader->setOpacity(1.0f);
+
+            shader->applyUniforms(customShader->getUniforms());
+            shader->applyBitmaps(customShader->getBitmaps(), 1);
+
+            p->bitmap->bindTex(*shader, false);
+
+            glState.blend.pushSet(false);
+            p->shaderQuad.draw();
+            glState.blend.pop();
+        };
+
+        if (validShaderCount > 0)
+        {
+            for (size_t i = 0; i < p->shaders.size(); ++i)
+            {
+                if (p->shaders[i] && !p->shaders[i]->isDisposed())
+                    drawCustomShaderToFBO(p->shaders[i]);
+            }
+        }
+        else if (hasCustomShader)
+        {
+            drawCustomShaderToFBO(p->shader);
+        }
+
+        /* Restore previous FBO and viewport */
+        FBO::bind(prevFBO);
+        glState.viewport.pop();
     }
 
-    bool renderEffect = p->color->hasEffect() ||
-    p->tone->hasEffect()  ||
-    flashing              ||
-    p->bushDepth != 0     ||
-    p->invert             ||
-    (p->pattern && !p->pattern->isDisposed());
-    
+    /* --- Built-in shader selection (tone/color/opacity/scaling) --- */
+
     int scalingMethod = NearestNeighbor;
 
     int sourceWidthHires = p->bitmap->hasHires() ? p->bitmap->getHires()->width() : p->bitmap->width();
@@ -1096,16 +1173,16 @@ void Sprite::draw()
         }
 
         SpriteShader &shader = shState->shaders().sprite;
-        
+
         shader.bind();
         shader.applyViewportProj();
         shader.setSpriteMat(p->trans.getMatrix());
-        
+
         shader.setTone(p->tone->norm);
         shader.setOpacity(p->opacity.norm);
         shader.setBushDepth(p->bushY, p->bushUnder, p->bushSlope, p->bushIntercept);
         shader.setBushOpacity(p->bushOpacity.norm);
-        
+
         if (p->pattern && p->patternOpacity > 0) {
             if (p->pattern->hasHires()) {
                 Debug() << "BUG: High-res Sprite pattern not implemented";
@@ -1122,16 +1199,16 @@ void Sprite::draw()
         else {
             shader.setShouldRenderPattern(false);
         }
-        
+
         shader.setInvert(p->invert);
-        
+
         /* When both flashing and effective color are set,
          * the one with higher alpha will be blended */
         const Vec4 *blend = (flashing && flashColor.w > p->color->norm.w) ?
         &flashColor : &p->color->norm;
-        
+
         shader.setColor(*blend);
-        
+
         base = &shader;
     }
     else if (p->opacity != 255)
@@ -1144,7 +1221,7 @@ void Sprite::draw()
 
         AlphaSpriteShader &shader = shState->shaders().alphaSprite;
         shader.bind();
-        
+
         shader.setSpriteMat(p->trans.getMatrix());
         shader.setAlpha(p->opacity.norm);
         shader.applyViewportProj();
@@ -1170,7 +1247,7 @@ void Sprite::draw()
         {
             Lanczos3SpriteShader &shader = shState->shaders().lanczos3Sprite;
             shader.bind();
-            
+
             shader.setTexSize(Vec2i(sourceWidthHires, sourceHeightHires));
             shader.setSpriteMat(p->trans.getMatrix());
             shader.applyViewportProj();
@@ -1200,12 +1277,22 @@ void Sprite::draw()
             shader.applyViewportProj();
             base = &shader;
         }
-        }        
+        }
     }
-    
+
     glState.blendMode.pushSet(p->blendType);
-    
-    p->bitmap->bindTex(*base, false);
+
+    /* Bind either the temp FBO texture (custom shader output)
+     * or the original bitmap texture */
+    if (useTempFBO)
+    {
+        TEX::bind(p->shaderTex.tex);
+        base->setTexSize(Vec2i(p->shaderTexW, p->shaderTexH));
+    }
+    else
+    {
+        p->bitmap->bindTex(*base, false);
+    }
 
 #ifdef MKXPZ_SSL
     if (scalingMethod == xBRZ)
@@ -1214,14 +1301,14 @@ void Sprite::draw()
         shader.setTargetScale(Vec2((float)(shState->config().xbrzScalingFactor), (float)(shState->config().xbrzScalingFactor)));
     }
 #endif
-    
+
     TEX::setSmooth(scalingMethod == Bilinear);
 
     if (p->wave.active)
         p->wave.qArray.draw();
     else
         p->quad.draw();
-    
+
     TEX::setSmooth(false);
 
     glState.blendMode.pop();
