@@ -712,6 +712,9 @@ void Sprite::draw()
         int bw = p->bitmap->width();
         int bh = p->bitmap->height();
 
+        /* Save current FBO before any operations that might change it */
+        FBO::ID prevFBO = FBO::boundFramebufferID;
+
         /* Lazy-init and resize temp FBO */
         if (!p->shaderTexInited)
         {
@@ -729,8 +732,6 @@ void Sprite::draw()
             p->shaderTexH = bh;
         }
 
-        /* Save current FBO and viewport state */
-        FBO::ID prevFBO = FBO::boundFramebufferID;
         glState.viewport.pushSet(IntRect(0, 0, bw, bh));
 
         /* Bind temp FBO and clear */
