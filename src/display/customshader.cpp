@@ -224,6 +224,28 @@ void CustomShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUnit)
 	}
 }
 
+// Prefix injected before user's fragment shader to set up tone/color
+// processing. Renames user's main() so we can wrap it.
+static const char *spriteFragPrefix =
+	"uniform lowp vec4 _mkxp_tone;\n"
+	"uniform lowp vec4 _mkxp_color;\n"
+	"const vec3 _mkxp_lumaF = vec3(.299, .587, .114);\n"
+	"#define main _mkxp_user_main\n";
+
+// Suffix appended after user's fragment shader. Calls user's main,
+// then applies tone and color to gl_FragColor.
+static const char *spriteFragSuffix =
+	"\n#undef main\n"
+	"void main() {\n"
+	"    _mkxp_user_main();\n"
+	"    vec4 frag = gl_FragColor;\n"
+	"    float luma = dot(frag.rgb, _mkxp_lumaF);\n"
+	"    frag.rgb = mix(frag.rgb, vec3(luma), _mkxp_tone.w);\n"
+	"    frag.rgb += _mkxp_tone.rgb;\n"
+	"    frag.rgb = mix(frag.rgb, _mkxp_color.rgb, _mkxp_color.a);\n"
+	"    gl_FragColor = frag;\n"
+	"}\n";
+
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
                                                const char *fragName)
 {
@@ -245,11 +267,15 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		                fragName, log.c_str());
 	}
 
-	// Compile fragment shader with error handling
-	const GLchar *fragSources[1] = { fragContents };
-	GLint fragLengths[1] = { fragSize };
+	// Compile fragment shader wrapped with tone/color post-processing
+	const GLchar *fragSources[3] = { spriteFragPrefix, fragContents, spriteFragSuffix };
+	GLint fragLengths[3] = {
+		(GLint)strlen(spriteFragPrefix),
+		fragSize,
+		(GLint)strlen(spriteFragSuffix)
+	};
 
-	gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
+	gl.ShaderSource(fragShader, 3, fragSources, fragLengths);
 	gl.CompileShader(fragShader);
 
 	gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
@@ -287,6 +313,8 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 	u_spriteMat = gl.GetUniformLocation(program, "spriteMat");
 	u_time = gl.GetUniformLocation(program, "time");
 	u_opacity = gl.GetUniformLocation(program, "opacity");
+	u_tone = gl.GetUniformLocation(program, "_mkxp_tone");
+	u_color = gl.GetUniformLocation(program, "_mkxp_color");
 }
 
 void CustomSpriteShaderImpl::setSpriteMat(const float value[16])
@@ -304,6 +332,16 @@ void CustomSpriteShaderImpl::setOpacity(float value)
 {
 	if (u_opacity >= 0)
 		gl.Uniform1f(u_opacity, value);
+}
+
+void CustomSpriteShaderImpl::setTone(const Vec4 &value)
+{
+	gl.Uniform4f(u_tone, value.x, value.y, value.z, value.w);
+}
+
+void CustomSpriteShaderImpl::setColor(const Vec4 &value)
+{
+	gl.Uniform4f(u_color, value.x, value.y, value.z, value.w);
 }
 
 void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
