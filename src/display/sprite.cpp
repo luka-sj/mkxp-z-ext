@@ -735,10 +735,11 @@ void Sprite::draw()
         glState.viewport.pushSet(IntRect(0, 0, bw, bh));
         glState.scissorTest.pushSet(false);
 
-        /* Bind temp FBO and clear */
+        /* Bind temp FBO and clear to transparent */
         FBO::bind(p->shaderTex.fbo);
-        gl.ClearColor(0, 0, 0, 0);
+        glState.clearColor.pushSet(Vec4(0, 0, 0, 0));
         FBO::clear();
+        glState.clearColor.pop();
 
         /* Set up quad covering the full bitmap area */
         FloatRect texRect(0, 0, bw, bh);
