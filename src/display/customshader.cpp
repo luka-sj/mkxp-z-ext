@@ -224,27 +224,92 @@ void CustomShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUnit)
 	}
 }
 
-// Prefix injected before user's fragment shader to set up tone/color
-// processing. Renames user's main() so we can wrap it.
-static const char *spriteFragPrefix =
-	"uniform lowp vec4 _mkxp_tone;\n"
-	"uniform lowp vec4 _mkxp_color;\n"
-	"const vec3 _mkxp_lumaF = vec3(.299, .587, .114);\n"
-	"#define main _mkxp_user_main\n";
-
-// Suffix appended after user's fragment shader. Calls user's main,
-// then applies tone and color to gl_FragColor.
+// Suffix appended after the user's fragment shader (with main renamed).
+// Calls the user's original main, then applies tone and color.
 static const char *spriteFragSuffix =
-	"\n#undef main\n"
-	"void main() {\n"
+	"\nvoid main() {\n"
 	"    _mkxp_user_main();\n"
-	"    vec4 frag = gl_FragColor;\n"
-	"    float luma = dot(frag.rgb, _mkxp_lumaF);\n"
-	"    frag.rgb = mix(frag.rgb, vec3(luma), _mkxp_tone.w);\n"
-	"    frag.rgb += _mkxp_tone.rgb;\n"
-	"    frag.rgb = mix(frag.rgb, _mkxp_color.rgb, _mkxp_color.a);\n"
-	"    gl_FragColor = frag;\n"
+	"    vec4 _mkxp_frag = gl_FragColor;\n"
+	"    float _mkxp_luma = dot(_mkxp_frag.rgb, vec3(.299, .587, .114));\n"
+	"    _mkxp_frag.rgb = mix(_mkxp_frag.rgb, vec3(_mkxp_luma), _mkxp_tone.w);\n"
+	"    _mkxp_frag.rgb += _mkxp_tone.rgb;\n"
+	"    _mkxp_frag.rgb = mix(_mkxp_frag.rgb, _mkxp_color.rgb, _mkxp_color.a);\n"
+	"    gl_FragColor = _mkxp_frag;\n"
 	"}\n";
+
+// Build a wrapped fragment shader source that renames the user's main()
+// to _mkxp_user_main() and appends tone/color post-processing.
+// Returns empty string if wrapping fails (main not found).
+static std::string buildWrappedFragSource(const char *fragContents, int fragSize)
+{
+	std::string src(fragContents, fragSize);
+
+	// Find "void main" — search for "void" then whitespace then "main"
+	// then optional whitespace then "("
+	size_t pos = 0;
+	size_t mainPos = std::string::npos;
+
+	while (pos < src.size())
+	{
+		size_t voidPos = src.find("void", pos);
+		if (voidPos == std::string::npos)
+			break;
+
+		// Check that "void" is at a word boundary (not part of another identifier)
+		if (voidPos > 0 && (isalnum(src[voidPos - 1]) || src[voidPos - 1] == '_'))
+		{
+			pos = voidPos + 4;
+			continue;
+		}
+
+		// Skip whitespace after "void"
+		size_t p = voidPos + 4;
+		while (p < src.size() && (src[p] == ' ' || src[p] == '\t' || src[p] == '\n' || src[p] == '\r'))
+			p++;
+
+		// Check for "main"
+		if (p + 4 > src.size() || src.substr(p, 4) != "main")
+		{
+			pos = p;
+			continue;
+		}
+
+		// Check word boundary after "main"
+		size_t afterMain = p + 4;
+		if (afterMain < src.size() && (isalnum(src[afterMain]) || src[afterMain] == '_'))
+		{
+			pos = afterMain;
+			continue;
+		}
+
+		// Skip whitespace after "main"
+		size_t q = afterMain;
+		while (q < src.size() && (src[q] == ' ' || src[q] == '\t' || src[q] == '\n' || src[q] == '\r'))
+			q++;
+
+		// Check for "("
+		if (q < src.size() && src[q] == '(')
+		{
+			mainPos = p; // position of "main" token
+			break;
+		}
+
+		pos = q;
+	}
+
+	if (mainPos == std::string::npos)
+		return std::string();
+
+	// Replace "main" with "_mkxp_user_main" at the found position
+	src.replace(mainPos, 4, "_mkxp_user_main");
+
+	// Prepend tone/color uniform declarations
+	std::string prefix =
+		"uniform lowp vec4 _mkxp_tone;\n"
+		"uniform lowp vec4 _mkxp_color;\n";
+
+	return prefix + src + spriteFragSuffix;
+}
 
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
                                                const char *fragName)
@@ -267,25 +332,41 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		                fragName, log.c_str());
 	}
 
-	// Compile fragment shader wrapped with tone/color post-processing
-	const GLchar *fragSources[3] = { spriteFragPrefix, fragContents, spriteFragSuffix };
-	GLint fragLengths[3] = {
-		(GLint)strlen(spriteFragPrefix),
-		fragSize,
-		(GLint)strlen(spriteFragSuffix)
-	};
+	// Try to build a wrapped fragment shader with tone/color support.
+	// If wrapping fails, compile the original shader without tone/color.
+	std::string wrappedSrc = buildWrappedFragSource(fragContents, fragSize);
+	bool wrapped = false;
 
-	gl.ShaderSource(fragShader, 3, fragSources, fragLengths);
-	gl.CompileShader(fragShader);
-
-	gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
-
-	if (!success)
+	if (!wrappedSrc.empty())
 	{
-		std::string log = getShaderLog(fragShader);
-		throw Exception(Exception::MKXPError,
-		                "Shader compilation failed for '%s':\n%s",
-		                fragName, log.c_str());
+		const GLchar *wrapSources[1] = { wrappedSrc.c_str() };
+		GLint wrapLengths[1] = { (GLint)wrappedSrc.size() };
+
+		gl.ShaderSource(fragShader, 1, wrapSources, wrapLengths);
+		gl.CompileShader(fragShader);
+
+		gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+		wrapped = (success != 0);
+	}
+
+	if (!wrapped)
+	{
+		// Fallback: compile original shader without wrapping
+		const GLchar *fragSources[1] = { fragContents };
+		GLint fragLengths[1] = { fragSize };
+
+		gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
+		gl.CompileShader(fragShader);
+
+		gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
+
+		if (!success)
+		{
+			std::string log = getShaderLog(fragShader);
+			throw Exception(Exception::MKXPError,
+			                "Shader compilation failed for '%s':\n%s",
+			                fragName, log.c_str());
+		}
 	}
 
 	// Link program with error handling
@@ -336,12 +417,14 @@ void CustomSpriteShaderImpl::setOpacity(float value)
 
 void CustomSpriteShaderImpl::setTone(const Vec4 &value)
 {
-	gl.Uniform4f(u_tone, value.x, value.y, value.z, value.w);
+	if (u_tone >= 0)
+		gl.Uniform4f(u_tone, value.x, value.y, value.z, value.w);
 }
 
 void CustomSpriteShaderImpl::setColor(const Vec4 &value)
 {
-	gl.Uniform4f(u_color, value.x, value.y, value.z, value.w);
+	if (u_color >= 0)
+		gl.Uniform4f(u_color, value.x, value.y, value.z, value.w);
 }
 
 void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
