@@ -733,6 +733,7 @@ void Sprite::draw()
         }
 
         glState.viewport.pushSet(IntRect(0, 0, bw, bh));
+        glState.scissorTest.pushSet(false);
 
         /* Bind temp FBO and clear */
         FBO::bind(p->shaderTex.fbo);
@@ -785,8 +786,9 @@ void Sprite::draw()
             drawCustomShaderToFBO(p->shader);
         }
 
-        /* Restore previous FBO and viewport */
+        /* Restore previous FBO, scissor, and viewport */
         FBO::bind(prevFBO);
+        glState.scissorTest.pop();
         glState.viewport.pop();
     }
 
