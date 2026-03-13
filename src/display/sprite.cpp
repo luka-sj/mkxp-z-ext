@@ -87,12 +87,6 @@ struct SpritePrivate
     CustomShader *shader;
     std::vector<CustomShader*> shaders;
 
-    /* Temp FBO for rendering custom shaders before built-in effects */
-    TEXFBO shaderTex;
-    bool shaderTexInited;
-    int shaderTexW, shaderTexH;
-    Quad shaderQuad;
-
     struct
     {
         int amp;
@@ -127,10 +121,7 @@ struct SpritePrivate
     isVisible(false),
     color(&tmp.color),
     tone(&tmp.tone),
-    shader(0),
-    shaderTexInited(false),
-    shaderTexW(0),
-    shaderTexH(0)
+    shader(0)
 
     {
         sceneRect.x = sceneRect.y = 0;
@@ -156,9 +147,6 @@ struct SpritePrivate
         prepareCon.disconnect();
 
         bitmapDisposal();
-
-        if (shaderTexInited)
-            TEXFBO::fini(shaderTex);
     }
     
     void bitmapDisposal()
@@ -650,17 +638,15 @@ void Sprite::draw()
 
     bool hasAnyCustomShader = (validShaderCount > 0) || hasCustomShader;
 
-    bool renderEffect = p->color->hasEffect() ||
-    p->tone->hasEffect()  ||
-    flashing              ||
-    p->bushDepth != 0     ||
-    p->invert             ||
-    (p->pattern && !p->pattern->isDisposed());
-
-    /* If custom shaders present but no built-in effects needed,
-     * render custom shaders directly to screen (fast path) */
-    if (hasAnyCustomShader && !renderEffect && p->opacity == 255)
+    /* Custom shaders handle tone/color internally via injected uniforms,
+     * so render them directly in a single pass */
+    if (hasAnyCustomShader)
     {
+        /* When both flashing and effective color are set,
+         * the one with higher alpha will be blended */
+        const Vec4 *blend = (flashing && flashColor.w > p->color->norm.w) ?
+        &flashColor : &p->color->norm;
+
         auto drawCustomShader = [&](CustomShader *customShader)
         {
             CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
@@ -670,6 +656,8 @@ void Sprite::draw()
             shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
             shader->setTime(SDL_GetTicks() / 1000.0f);
             shader->setOpacity(p->opacity.norm);
+            shader->setTone(p->tone->norm);
+            shader->setColor(*blend);
 
             shader->applyUniforms(customShader->getUniforms());
             shader->applyBitmaps(customShader->getBitmaps(), 1);
@@ -702,98 +690,12 @@ void Sprite::draw()
         return;
     }
 
-    /* If custom shaders present AND built-in effects needed,
-     * render custom shaders to temp FBO first, then apply
-     * built-in effects (tone/color/etc) on top */
-    bool useTempFBO = hasAnyCustomShader && (renderEffect || p->opacity != 255);
-
-    if (useTempFBO)
-    {
-        int bw = p->bitmap->width();
-        int bh = p->bitmap->height();
-
-        /* Save current FBO before any operations that might change it */
-        FBO::ID prevFBO = FBO::boundFramebufferID;
-
-        /* Lazy-init and resize temp FBO */
-        if (!p->shaderTexInited)
-        {
-            TEXFBO::init(p->shaderTex);
-            p->shaderTexInited = true;
-            p->shaderTexW = 0;
-            p->shaderTexH = 0;
-        }
-
-        if (p->shaderTexW != bw || p->shaderTexH != bh)
-        {
-            TEXFBO::allocEmpty(p->shaderTex, bw, bh);
-            TEXFBO::linkFBO(p->shaderTex);
-            p->shaderTexW = bw;
-            p->shaderTexH = bh;
-        }
-
-        glState.viewport.pushSet(IntRect(0, 0, bw, bh));
-        glState.scissorTest.pushSet(false);
-
-        /* Bind temp FBO and clear to transparent */
-        FBO::bind(p->shaderTex.fbo);
-        glState.clearColor.pushSet(Vec4(0, 0, 0, 0));
-        FBO::clear();
-        glState.clearColor.pop();
-
-        /* Set up quad covering the full bitmap area */
-        FloatRect texRect(0, 0, bw, bh);
-        p->shaderQuad.setTexPosRect(texRect, texRect);
-
-        /* Identity sprite matrix for rendering into the FBO */
-        GLfloat identityMat[16] = {
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1
-        };
-
-        /* Render each custom shader into the temp FBO */
-        auto drawCustomShaderToFBO = [&](CustomShader *customShader)
-        {
-            CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
-            shader->bind();
-            shader->projMat.set(Vec2i(bw, bh));
-            shader->setSpriteMat(identityMat);
-            shader->setTexSize(Vec2i(bw, bh));
-            shader->setTime(SDL_GetTicks() / 1000.0f);
-            shader->setOpacity(1.0f);
-
-            shader->applyUniforms(customShader->getUniforms());
-            shader->applyBitmaps(customShader->getBitmaps(), 1);
-
-            p->bitmap->bindTex(*shader, false);
-
-            glState.blend.pushSet(false);
-            p->shaderQuad.draw();
-            glState.blend.pop();
-        };
-
-        if (validShaderCount > 0)
-        {
-            for (size_t i = 0; i < p->shaders.size(); ++i)
-            {
-                if (p->shaders[i] && !p->shaders[i]->isDisposed())
-                    drawCustomShaderToFBO(p->shaders[i]);
-            }
-        }
-        else if (hasCustomShader)
-        {
-            drawCustomShaderToFBO(p->shader);
-        }
-
-        /* Restore previous FBO, scissor, and viewport */
-        FBO::bind(prevFBO);
-        glState.scissorTest.pop();
-        glState.viewport.pop();
-    }
-
-    /* --- Built-in shader selection (tone/color/opacity/scaling) --- */
+    bool renderEffect = p->color->hasEffect() ||
+    p->tone->hasEffect()  ||
+    flashing              ||
+    p->bushDepth != 0     ||
+    p->invert             ||
+    (p->pattern && !p->pattern->isDisposed());
 
     int scalingMethod = NearestNeighbor;
 
@@ -952,17 +854,7 @@ void Sprite::draw()
 
     glState.blendMode.pushSet(p->blendType);
 
-    /* Bind either the temp FBO texture (custom shader output)
-     * or the original bitmap texture */
-    if (useTempFBO)
-    {
-        TEX::bind(p->shaderTex.tex);
-        base->setTexSize(Vec2i(p->shaderTexW, p->shaderTexH));
-    }
-    else
-    {
-        p->bitmap->bindTex(*base, false);
-    }
+    p->bitmap->bindTex(*base, false);
 
 #ifdef MKXPZ_SSL
     if (scalingMethod == xBRZ)

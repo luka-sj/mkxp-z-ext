@@ -80,6 +80,8 @@ public:
 	void setSpriteMat(const float value[16]);
 	void setTime(float value);
 	void setOpacity(float value);
+	void setTone(const Vec4 &value);
+	void setColor(const Vec4 &value);
 	void applyUniforms(const UniformMap &uniforms);
 	void applyBitmaps(const BitmapMap &bitmaps, int startUnit = 1);
 
@@ -87,6 +89,8 @@ private:
 	GLint u_spriteMat;
 	GLint u_time;
 	GLint u_opacity;
+	GLint u_tone;
+	GLint u_color;
 };
 
 struct CustomShaderPrivate;
