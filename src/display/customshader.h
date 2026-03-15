@@ -82,6 +82,9 @@ public:
 	void setOpacity(float value);
 	void setTone(const Vec4 &value);
 	void setColor(const Vec4 &value);
+	void setInvert(bool value);
+	void setBushDepth(float value);
+	void setBushOpacity(float value);
 	void applyUniforms(const UniformMap &uniforms);
 	void applyBitmaps(const BitmapMap &bitmaps, int startUnit = 1);
 
@@ -91,6 +94,9 @@ private:
 	GLint u_opacity;
 	GLint u_tone;
 	GLint u_color;
+	GLint u_invert;
+	GLint u_bushDepth;
+	GLint u_bushOpacity;
 };
 
 struct CustomShaderPrivate;
