@@ -225,7 +225,7 @@ void CustomShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUnit)
 }
 
 // Suffix appended after the user's fragment shader (with main renamed).
-// Calls the user's original main, then applies tone and color.
+// Calls the user's original main, then applies built-in sprite effects.
 static const char *spriteFragSuffix =
 	"\nvoid main() {\n"
 	"    _mkxp_user_main();\n"
@@ -233,7 +233,13 @@ static const char *spriteFragSuffix =
 	"    float _mkxp_luma = dot(_mkxp_frag.rgb, vec3(.299, .587, .114));\n"
 	"    _mkxp_frag.rgb = mix(_mkxp_frag.rgb, vec3(_mkxp_luma), _mkxp_tone.w);\n"
 	"    _mkxp_frag.rgb += _mkxp_tone.rgb;\n"
+	"    _mkxp_frag.a *= _mkxp_opacity;\n"
 	"    _mkxp_frag.rgb = mix(_mkxp_frag.rgb, _mkxp_color.rgb, _mkxp_color.a);\n"
+	"    if (_mkxp_invert) {\n"
+	"        _mkxp_frag.rgb = vec3(1.0) - _mkxp_frag.rgb;\n"
+	"    }\n"
+	"    lowp float _mkxp_underBush = float(v_texCoord.y < _mkxp_bushDepth);\n"
+	"    _mkxp_frag.a *= clamp(_mkxp_bushOpacity + _mkxp_underBush, 0.0, 1.0);\n"
 	"    gl_FragColor = _mkxp_frag;\n"
 	"}\n";
 
@@ -303,12 +309,65 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 	// Replace "main" with "_mkxp_user_main" at the found position
 	src.replace(mainPos, 4, "_mkxp_user_main");
 
-	// Prepend tone/color uniform declarations
-	std::string prefix =
+	// Built-in effect uniform declarations to inject
+	std::string uniforms =
 		"uniform lowp vec4 _mkxp_tone;\n"
-		"uniform lowp vec4 _mkxp_color;\n";
+		"uniform lowp float _mkxp_opacity;\n"
+		"uniform lowp vec4 _mkxp_color;\n"
+		"uniform bool _mkxp_invert;\n"
+		"uniform float _mkxp_bushDepth;\n"
+		"uniform lowp float _mkxp_bushOpacity;\n";
 
-	return prefix + src + spriteFragSuffix;
+	// Find insertion point after #version and #extension directives,
+	// since these must appear before any other statements in GLSL.
+	size_t insertPos = 0;
+	size_t searchPos = 0;
+	while (searchPos < src.size())
+	{
+		// Skip whitespace
+		while (searchPos < src.size() && (src[searchPos] == ' ' || src[searchPos] == '\t' ||
+		       src[searchPos] == '\n' || src[searchPos] == '\r'))
+			searchPos++;
+
+		if (searchPos >= src.size())
+			break;
+
+		// Check for preprocessor directives that must come first
+		if (src[searchPos] == '#')
+		{
+			// Check if it's #version or #extension
+			size_t dirStart = searchPos + 1;
+			while (dirStart < src.size() && (src[dirStart] == ' ' || src[dirStart] == '\t'))
+				dirStart++;
+
+			bool isSpecialDir = false;
+			if (src.compare(dirStart, 7, "version") == 0)
+				isSpecialDir = true;
+			else if (src.compare(dirStart, 9, "extension") == 0)
+				isSpecialDir = true;
+
+			if (isSpecialDir)
+			{
+				// Skip to end of line
+				size_t eol = src.find('\n', searchPos);
+				if (eol == std::string::npos)
+					eol = src.size();
+				else
+					eol++; // include the newline
+				insertPos = eol;
+				searchPos = eol;
+				continue;
+			}
+		}
+
+		// Not a #version or #extension line, stop here
+		break;
+	}
+
+	// Insert uniforms after the directives
+	src.insert(insertPos, uniforms);
+
+	return src + spriteFragSuffix;
 }
 
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
@@ -393,9 +452,12 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 
 	u_spriteMat = gl.GetUniformLocation(program, "spriteMat");
 	u_time = gl.GetUniformLocation(program, "time");
-	u_opacity = gl.GetUniformLocation(program, "opacity");
+	u_opacity = gl.GetUniformLocation(program, "_mkxp_opacity");
 	u_tone = gl.GetUniformLocation(program, "_mkxp_tone");
 	u_color = gl.GetUniformLocation(program, "_mkxp_color");
+	u_invert = gl.GetUniformLocation(program, "_mkxp_invert");
+	u_bushDepth = gl.GetUniformLocation(program, "_mkxp_bushDepth");
+	u_bushOpacity = gl.GetUniformLocation(program, "_mkxp_bushOpacity");
 }
 
 void CustomSpriteShaderImpl::setSpriteMat(const float value[16])
@@ -425,6 +487,24 @@ void CustomSpriteShaderImpl::setColor(const Vec4 &value)
 {
 	if (u_color >= 0)
 		gl.Uniform4f(u_color, value.x, value.y, value.z, value.w);
+}
+
+void CustomSpriteShaderImpl::setInvert(bool value)
+{
+	if (u_invert >= 0)
+		gl.Uniform1i(u_invert, value ? 1 : 0);
+}
+
+void CustomSpriteShaderImpl::setBushDepth(float value)
+{
+	if (u_bushDepth >= 0)
+		gl.Uniform1f(u_bushDepth, value);
+}
+
+void CustomSpriteShaderImpl::setBushOpacity(float value)
+{
+	if (u_bushOpacity >= 0)
+		gl.Uniform1f(u_bushOpacity, value);
 }
 
 void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
