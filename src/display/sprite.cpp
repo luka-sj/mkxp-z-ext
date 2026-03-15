@@ -992,6 +992,9 @@ void Sprite::draw()
             shader->setOpacity(p->opacity.norm);
             shader->setTone(p->tone->norm);
             shader->setColor(*blend);
+            shader->setInvert(p->invert);
+            shader->setBushDepth(p->efBushDepth);
+            shader->setBushOpacity(p->bushOpacity.norm);
 
             shader->applyUniforms(customShader->getUniforms());
             shader->applyBitmaps(customShader->getBitmaps(), 1);
