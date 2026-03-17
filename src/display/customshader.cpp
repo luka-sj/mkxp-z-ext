@@ -20,6 +20,7 @@
 */
 
 #include "customshader.h"
+#include "debugwriter.h"
 #include "sharedstate.h"
 #include "filesystem/filesystem.h"
 #include "util/exception.h"
@@ -398,6 +399,8 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 
 	if (!wrappedSrc.empty())
 	{
+		Debug() << "CustomShader [" << fragName << "]: Wrapped source built successfully";
+
 		const GLchar *wrapSources[1] = { wrappedSrc.c_str() };
 		GLint wrapLengths[1] = { (GLint)wrappedSrc.size() };
 
@@ -406,10 +409,27 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 
 		gl.GetShaderiv(fragShader, GL_COMPILE_STATUS, &success);
 		wrapped = (success != 0);
+
+		if (!wrapped)
+		{
+			std::string log = getShaderLog(fragShader);
+			Debug() << "CustomShader [" << fragName << "]: Wrapped shader FAILED to compile:\n" << log.c_str();
+			Debug() << "CustomShader [" << fragName << "]: Wrapped source:\n" << wrappedSrc.c_str();
+		}
+		else
+		{
+			Debug() << "CustomShader [" << fragName << "]: Wrapped shader compiled OK";
+		}
+	}
+	else
+	{
+		Debug() << "CustomShader [" << fragName << "]: buildWrappedFragSource failed (main not found)";
 	}
 
 	if (!wrapped)
 	{
+		Debug() << "CustomShader [" << fragName << "]: Falling back to unwrapped shader (no built-in effects)";
+
 		// Fallback: compile original shader without wrapping
 		const GLchar *fragSources[1] = { fragContents };
 		GLint fragLengths[1] = { fragSize };
