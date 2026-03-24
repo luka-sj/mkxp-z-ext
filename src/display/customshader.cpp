@@ -310,13 +310,21 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 	// Replace "main" with "_mkxp_user_main" at the found position
 	src.replace(mainPos, 4, "_mkxp_user_main");
 
-	// Built-in effect uniform declarations to inject
-	std::string uniforms =
+	// Built-in effect uniform declarations to inject.
+	// Desktop GLSL doesn't recognize precision qualifiers (lowp, mediump,
+	// highp) natively — the built-in shaders get them #defined away via
+	// common.h, but custom shaders are compiled without that header.
+	// Inject the same defines so the qualifiers compile on all platforms.
+	std::string uniforms;
+	if (!gl.glsles)
+		uniforms = "#define lowp\n#define mediump\n#define highp\n";
+
+	uniforms +=
 		"uniform lowp vec4 _mkxp_tone;\n"
 		"uniform lowp float _mkxp_opacity;\n"
 		"uniform lowp vec4 _mkxp_color;\n"
 		"uniform bool _mkxp_invert;\n"
-		"uniform float _mkxp_bushDepth;\n"
+		"uniform lowp float _mkxp_bushDepth;\n"
 		"uniform lowp float _mkxp_bushOpacity;\n";
 
 	// Find insertion point after #version and #extension directives,
