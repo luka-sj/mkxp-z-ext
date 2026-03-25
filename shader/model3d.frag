@@ -8,18 +8,12 @@ varying vec2 v_texCoord;
 varying vec3 v_fragPos;
 
 uniform sampler2D u_diffuseTex;
-uniform bool u_hasDiffuseTex;
 uniform vec4 u_diffuseColor;
 uniform vec3 u_lightDir;
 uniform float u_ambient;
 
 void main() {
-    vec4 texColor;
-    if (u_hasDiffuseTex) {
-        texColor = texture2D(u_diffuseTex, v_texCoord) * u_diffuseColor;
-    } else {
-        texColor = u_diffuseColor;
-    }
+    vec4 texColor = texture2D(u_diffuseTex, v_texCoord) * u_diffuseColor;
 
     vec3 norm = normalize(v_normal);
     vec3 lightDir = normalize(u_lightDir);

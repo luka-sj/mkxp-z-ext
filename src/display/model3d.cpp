@@ -276,7 +276,10 @@ struct Model3DPrivate
 	GLuint program, vertShader, fragShader;
 	GLint u_modelMat, u_viewMat, u_projMat, u_normalMat;
 	GLint u_lightDir, u_ambient;
-	GLint u_diffuseTex, u_hasDiffuseTex, u_diffuseColor;
+	GLint u_diffuseTex, u_diffuseColor;
+
+	/* 1x1 white fallback texture for untextured materials */
+	GLuint whiteTex;
 
 	/* Material groups */
 	std::vector<MaterialGroup> materials;
@@ -299,7 +302,7 @@ struct Model3DPrivate
 	      lightX(0.5f), lightY(1.0f), lightZ(0.8f),
 	      ambient(0.2f),
 	      vbo(0), vertexCount(0),
-	      program(0), vertShader(0), fragShader(0),
+	      program(0), vertShader(0), fragShader(0), whiteTex(0),
 	      bboxRadius(1.0f),
 	      depthRbo(0), depthRboW(0), depthRboH(0)
 	{
@@ -322,6 +325,8 @@ struct Model3DPrivate
 			gl.DeleteShader(vertShader);
 		if (fragShader)
 			gl.DeleteShader(fragShader);
+		if (whiteTex)
+			gl.DeleteTextures(1, &whiteTex);
 
 		if (depthRbo)
 			gl.DeleteRenderbuffers(1, &depthRbo);
@@ -735,8 +740,16 @@ Model3D::Model3D(const char *filename)
 	p->u_lightDir     = gl.GetUniformLocation(p->program, "u_lightDir");
 	p->u_ambient      = gl.GetUniformLocation(p->program, "u_ambient");
 	p->u_diffuseTex   = gl.GetUniformLocation(p->program, "u_diffuseTex");
-	p->u_hasDiffuseTex= gl.GetUniformLocation(p->program, "u_hasDiffuseTex");
 	p->u_diffuseColor = gl.GetUniformLocation(p->program, "u_diffuseColor");
+
+	/* Create a 1x1 white fallback texture for untextured materials */
+	static const uint8_t white[] = { 255, 255, 255, 255 };
+	gl.GenTextures(1, &p->whiteTex);
+	gl.BindTexture(GL_TEXTURE_2D, p->whiteTex);
+	gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0,
+	              GL_RGBA, GL_UNSIGNED_BYTE, white);
+	gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 }
 
 Model3D::~Model3D()
@@ -866,17 +879,9 @@ Bitmap *Model3D::render(int width, int height)
 	{
 		const MaterialGroup &mg = p->materials[i];
 
-		if (mg.hasTex)
-		{
-			gl.ActiveTexture(GL_TEXTURE0);
-			gl.BindTexture(GL_TEXTURE_2D, mg.texGL);
-			gl.Uniform1i(p->u_diffuseTex, 0);
-			gl.Uniform1i(p->u_hasDiffuseTex, 1);
-		}
-		else
-		{
-			gl.Uniform1i(p->u_hasDiffuseTex, 0);
-		}
+		gl.ActiveTexture(GL_TEXTURE0);
+		gl.BindTexture(GL_TEXTURE_2D, mg.hasTex ? mg.texGL : p->whiteTex);
+		gl.Uniform1i(p->u_diffuseTex, 0);
 
 		gl.Uniform4f(p->u_diffuseColor,
 		             mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
