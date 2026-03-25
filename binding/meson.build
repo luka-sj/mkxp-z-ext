@@ -27,7 +27,8 @@ binding_source = [files(
     'windowvx-binding.cpp',
     'tilemapvx-binding.cpp',
     'http-binding.cpp',
-    'shader-binding.cpp'
+    'shader-binding.cpp',
+    'model3d-binding.cpp'
 )]
 
 if get_option('steamworks_path') != ''
