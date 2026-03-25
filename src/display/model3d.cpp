@@ -66,15 +66,15 @@ static void mat4_multiply(float out[16], const float a[16], const float b[16])
 }
 
 static void mat4_perspective(float out[16], float fovDeg, float aspect,
-                             float near, float far)
+                             float zNear, float zFar)
 {
 	memset(out, 0, sizeof(float) * 16);
 	float f = 1.0f / tanf(fovDeg * (float)M_PI / 360.0f);
 	out[0]  = f / aspect;
 	out[5]  = f;
-	out[10] = (far + near) / (near - far);
+	out[10] = (zFar + zNear) / (zNear - zFar);
 	out[11] = -1.0f;
-	out[14] = (2.0f * far * near) / (near - far);
+	out[14] = (2.0f * zFar * zNear) / (zNear - zFar);
 }
 
 static void mat4_lookAt(float out[16],
@@ -697,7 +697,7 @@ Bitmap *Model3D::render(int width, int height)
 		                width, height);
 
 	/* ---- Save GL state ---- */
-	glState.viewport.pushSet(Vec2i(width, height));
+	glState.viewport.pushSet(IntRect(0, 0, width, height));
 	glState.scissorTest.pushSet(false);
 
 	FBO::ID savedFBO = FBO::boundFramebufferID;
