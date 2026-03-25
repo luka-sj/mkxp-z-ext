@@ -486,6 +486,13 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 	u_invert = gl.GetUniformLocation(program, "_mkxp_invert");
 	u_bushDepth = gl.GetUniformLocation(program, "_mkxp_bushDepth");
 	u_bushOpacity = gl.GetUniformLocation(program, "_mkxp_bushOpacity");
+
+	/* Look up standard uniform names that the user's shader may declare.
+	 * If present, the draw code sets them and neutralizes the suffix's
+	 * application to avoid double-applying the effect. */
+	u_stdOpacity = gl.GetUniformLocation(program, "opacity");
+	u_stdTone = gl.GetUniformLocation(program, "tone");
+	u_stdColor = gl.GetUniformLocation(program, "color");
 }
 
 void CustomSpriteShaderImpl::setSpriteMat(const float value[16])
@@ -533,6 +540,24 @@ void CustomSpriteShaderImpl::setBushOpacity(float value)
 {
 	if (u_bushOpacity >= 0)
 		gl.Uniform1f(u_bushOpacity, value);
+}
+
+void CustomSpriteShaderImpl::setStdOpacity(float value)
+{
+	if (u_stdOpacity >= 0)
+		gl.Uniform1f(u_stdOpacity, value);
+}
+
+void CustomSpriteShaderImpl::setStdTone(const Vec4 &value)
+{
+	if (u_stdTone >= 0)
+		gl.Uniform4f(u_stdTone, value.x, value.y, value.z, value.w);
+}
+
+void CustomSpriteShaderImpl::setStdColor(const Vec4 &value)
+{
+	if (u_stdColor >= 0)
+		gl.Uniform4f(u_stdColor, value.x, value.y, value.z, value.w);
 }
 
 void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
