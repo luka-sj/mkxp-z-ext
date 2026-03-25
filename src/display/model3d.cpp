@@ -38,6 +38,8 @@
 #include <sstream>
 #include <map>
 
+#include <SDL_image.h>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -246,10 +248,9 @@ struct MaterialGroup
 {
 	int startVertex;
 	int vertexCount;
-	TEX::ID diffuseTex;
+	GLuint texGL;     /* GL texture ID (owned, deleted in destructor) */
 	bool hasTex;
 	float diffuseR, diffuseG, diffuseB, diffuseA;
-	Bitmap *texBitmap; /* kept alive for GL texture lifetime */
 };
 
 struct Model3DPrivate
@@ -310,7 +311,8 @@ struct Model3DPrivate
 	~Model3DPrivate()
 	{
 		for (size_t i = 0; i < materials.size(); ++i)
-			delete materials[i].texBitmap;
+			if (materials[i].hasTex)
+				gl.DeleteTextures(1, &materials[i].texGL);
 
 		if (vbo)
 			gl.DeleteBuffers(1, &vbo);
@@ -564,7 +566,7 @@ Model3D::Model3D(const char *filename)
 		mg.startVertex = (int)(allVerts.size() / 8);
 		mg.vertexCount = (int)(kv.second.size() / 8);
 		mg.hasTex = false;
-		mg.texBitmap = 0;
+		mg.texGL = 0;
 		mg.diffuseR = 0.8f;
 		mg.diffuseG = 0.8f;
 		mg.diffuseB = 0.8f;
@@ -582,24 +584,57 @@ Model3D::Model3D(const char *filename)
 			if (!mat.diffuse_texname.empty())
 			{
 				std::string texPath = baseDir + mat.diffuse_texname;
+
+				/* Load texture via PhysFS + SDL_image directly,
+				 * bypassing Bitmap's path resolution which can
+				 * fail with extensions or special characters. */
+				SDL_RWops texOps;
 				try
 				{
-					Bitmap *bmp = new Bitmap(texPath.c_str());
-					bmp->ensureNonMega();
-					mg.texBitmap = bmp;
-					mg.diffuseTex = bmp->getGLTypes().tex;
-					mg.hasTex = true;
+					shState->fileSystem().openReadRaw(texOps, texPath.c_str(), false);
+				}
+				catch (const Exception &)
+				{
+					Debug() << "Model3D: texture not found: " << texPath.c_str();
+					goto skipTex;
+				}
 
-					/* OBJ UVs often extend beyond 0-1, need repeat wrapping */
-					TEX::bind(mg.diffuseTex);
+				{
+					SDL_Surface *surf = IMG_Load_RW(&texOps, 1);
+					if (!surf)
+					{
+						Debug() << "Model3D: IMG_Load_RW failed for: " << texPath.c_str();
+						goto skipTex;
+					}
+
+					/* Convert to RGBA */
+					SDL_Surface *rgba = SDL_ConvertSurfaceFormat(
+					    surf, SDL_PIXELFORMAT_ABGR8888, 0);
+					SDL_FreeSurface(surf);
+
+					if (!rgba)
+					{
+						Debug() << "Model3D: surface convert failed for: " << texPath.c_str();
+						goto skipTex;
+					}
+
+					GLuint tex;
+					gl.GenTextures(1, &tex);
+					gl.BindTexture(GL_TEXTURE_2D, tex);
+					gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+					              rgba->w, rgba->h, 0,
+					              GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
+					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+					mg.texGL = tex;
+					mg.hasTex = true;
+
+					SDL_FreeSurface(rgba);
 				}
-				catch (const Exception &e)
-				{
-					Debug() << "Model3D: Could not load texture '"
-					        << texPath.c_str() << "': " << e.msg;
-				}
+				skipTex:;
 			}
 		}
 
@@ -834,7 +869,7 @@ Bitmap *Model3D::render(int width, int height)
 		if (mg.hasTex)
 		{
 			gl.ActiveTexture(GL_TEXTURE0);
-			gl.BindTexture(GL_TEXTURE_2D, mg.diffuseTex.gl);
+			gl.BindTexture(GL_TEXTURE_2D, mg.texGL);
 			gl.Uniform1i(p->u_diffuseTex, 0);
 			gl.Uniform1i(p->u_hasDiffuseTex, 1);
 		}
