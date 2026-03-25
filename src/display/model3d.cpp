@@ -280,11 +280,14 @@ struct Model3DPrivate
 	/* Material groups */
 	std::vector<MaterialGroup> materials;
 
-	/* Offscreen FBO */
-	GLuint fbo;
-	GLuint colorTex;
+	/* Bounding box (computed at load time) */
+	float bboxMin[3], bboxMax[3];
+	float bboxCenter[3];
+	float bboxRadius;
+
+	/* Depth renderbuffer (attached to Bitmap FBO at render time) */
 	GLuint depthRbo;
-	int fboWidth, fboHeight;
+	int depthRboW, depthRboH;
 
 	Model3DPrivate()
 	    : rotX(0), rotY(0), rotZ(0),
@@ -296,9 +299,13 @@ struct Model3DPrivate
 	      ambient(0.2f),
 	      vbo(0), vertexCount(0),
 	      program(0), vertShader(0), fragShader(0),
-	      fbo(0), colorTex(0), depthRbo(0),
-	      fboWidth(0), fboHeight(0)
-	{}
+	      bboxRadius(1.0f),
+	      depthRbo(0), depthRboW(0), depthRboH(0)
+	{
+		bboxMin[0] = bboxMin[1] = bboxMin[2] = 0;
+		bboxMax[0] = bboxMax[1] = bboxMax[2] = 0;
+		bboxCenter[0] = bboxCenter[1] = bboxCenter[2] = 0;
+	}
 
 	~Model3DPrivate()
 	{
@@ -314,62 +321,23 @@ struct Model3DPrivate
 		if (fragShader)
 			gl.DeleteShader(fragShader);
 
-		destroyFBO();
-	}
-
-	void destroyFBO()
-	{
 		if (depthRbo)
-		{
 			gl.DeleteRenderbuffers(1, &depthRbo);
-			depthRbo = 0;
-		}
-		if (colorTex)
-		{
-			GLuint t = colorTex;
-			gl.DeleteTextures(1, &t);
-			colorTex = 0;
-		}
-		if (fbo)
-		{
-			gl.DeleteFramebuffers(1, &fbo);
-			fbo = 0;
-		}
-		fboWidth = fboHeight = 0;
 	}
 
-	void ensureFBO(int w, int h)
+	void ensureDepthRbo(int w, int h)
 	{
-		if (fboWidth == w && fboHeight == h && fbo)
+		if (depthRboW == w && depthRboH == h && depthRbo)
 			return;
 
-		destroyFBO();
+		if (depthRbo)
+			gl.DeleteRenderbuffers(1, &depthRbo);
 
-		/* Color texture */
-		GLuint tex;
-		gl.GenTextures(1, &tex);
-		gl.BindTexture(GL_TEXTURE_2D, tex);
-		gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
-		              GL_RGBA, GL_UNSIGNED_BYTE, 0);
-		gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		colorTex = tex;
-
-		/* Depth renderbuffer */
 		gl.GenRenderbuffers(1, &depthRbo);
 		gl.BindRenderbuffer(GL_RENDERBUFFER, depthRbo);
 		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, w, h);
-
-		/* Framebuffer */
-		gl.GenFramebuffers(1, &fbo);
-		gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
-		gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		                        GL_TEXTURE_2D, colorTex, 0);
-		gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-		                           GL_RENDERBUFFER, depthRbo);
-
-		fboWidth = w;
-		fboHeight = h;
+		depthRboW = w;
+		depthRboH = h;
 	}
 };
 
@@ -641,6 +609,42 @@ Model3D::Model3D(const char *filename)
 
 	p->vertexCount = (int)(allVerts.size() / 8);
 
+	/* ---- Compute bounding box ---- */
+	if (p->vertexCount > 0)
+	{
+		p->bboxMin[0] = p->bboxMax[0] = allVerts[0];
+		p->bboxMin[1] = p->bboxMax[1] = allVerts[1];
+		p->bboxMin[2] = p->bboxMax[2] = allVerts[2];
+
+		for (int i = 1; i < p->vertexCount; ++i)
+		{
+			float x = allVerts[i * 8 + 0];
+			float y = allVerts[i * 8 + 1];
+			float z = allVerts[i * 8 + 2];
+			if (x < p->bboxMin[0]) p->bboxMin[0] = x;
+			if (y < p->bboxMin[1]) p->bboxMin[1] = y;
+			if (z < p->bboxMin[2]) p->bboxMin[2] = z;
+			if (x > p->bboxMax[0]) p->bboxMax[0] = x;
+			if (y > p->bboxMax[1]) p->bboxMax[1] = y;
+			if (z > p->bboxMax[2]) p->bboxMax[2] = z;
+		}
+
+		p->bboxCenter[0] = (p->bboxMin[0] + p->bboxMax[0]) * 0.5f;
+		p->bboxCenter[1] = (p->bboxMin[1] + p->bboxMax[1]) * 0.5f;
+		p->bboxCenter[2] = (p->bboxMin[2] + p->bboxMax[2]) * 0.5f;
+
+		float dx = p->bboxMax[0] - p->bboxMin[0];
+		float dy = p->bboxMax[1] - p->bboxMin[1];
+		float dz = p->bboxMax[2] - p->bboxMin[2];
+		p->bboxRadius = sqrtf(dx*dx + dy*dy + dz*dz) * 0.5f;
+
+		/* Set default camera to frame the entire model */
+		float dist = p->bboxRadius / tanf(p->fov * (float)M_PI / 360.0f);
+		p->camX = p->bboxCenter[0];
+		p->camY = p->bboxCenter[1];
+		p->camZ = p->bboxCenter[2] + dist * 1.2f;
+	}
+
 	/* ---- Upload VBO ---- */
 	gl.GenBuffers(1, &p->vbo);
 	gl.BindBuffer(GL_ARRAY_BUFFER, p->vbo);
@@ -744,22 +748,26 @@ Bitmap *Model3D::render(int width, int height)
 		                "Model3D::render: invalid dimensions %d x %d",
 		                width, height);
 
+	/* ---- Create result Bitmap and render directly into its FBO ---- */
+	Bitmap *result = new Bitmap(width, height);
+	TEXFBO &resultTex = result->getGLTypes();
+
 	/* ---- Save GL state ---- */
 	glState.viewport.pushSet(IntRect(0, 0, width, height));
 	glState.scissorTest.pushSet(false);
-
 	FBO::ID savedFBO = FBO::boundFramebufferID;
 
-	/* ---- Prepare offscreen FBO ---- */
-	p->ensureFBO(width, height);
-	gl.BindFramebuffer(GL_FRAMEBUFFER, p->fbo);
+	/* Attach a depth renderbuffer to the Bitmap's FBO */
+	p->ensureDepthRbo(width, height);
+	FBO::bind(resultTex.fbo);
+	gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+	                           GL_RENDERBUFFER, p->depthRbo);
 
 	/* ---- 3D render state ---- */
 	gl.Viewport(0, 0, width, height);
 	gl.Enable(GL_DEPTH_TEST);
 	gl.DepthFunc(GL_LESS);
 	gl.DepthMask(GL_TRUE);
-	/* Don't cull faces — OBJ files have no guaranteed winding order */
 	gl.Disable(GL_CULL_FACE);
 	gl.Enable(GL_BLEND);
 	gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -770,8 +778,12 @@ Bitmap *Model3D::render(int width, int height)
 	float proj[16], view[16], model[16];
 	float tmp1[16], tmp2[16], tmp3[16], tmp4[16];
 
-	mat4_perspective(proj, p->fov, (float)width / height, 0.1f, 100.0f);
-	mat4_lookAt(view, p->camX, p->camY, p->camZ, 0, 0, 0, 0, 1, 0);
+	float farPlane = p->bboxRadius * 10.0f;
+	if (farPlane < 100.0f) farPlane = 100.0f;
+	mat4_perspective(proj, p->fov, (float)width / height, 0.1f, farPlane);
+	mat4_lookAt(view, p->camX, p->camY, p->camZ,
+	            p->bboxCenter[0], p->bboxCenter[1], p->bboxCenter[2],
+	            0, 1, 0);
 
 	mat4_translate(tmp1, p->posX, p->posY, p->posZ);
 	mat4_rotateZ(tmp2, p->rotZ * (float)M_PI / 180.0f);
@@ -795,21 +807,8 @@ Bitmap *Model3D::render(int width, int height)
 	gl.UniformMatrix4fv(p->u_viewMat, 1, GL_FALSE, view);
 	gl.UniformMatrix4fv(p->u_modelMat, 1, GL_FALSE, model);
 
-	/* UniformMatrix3fv might not be in the func table — use 9 Uniform3fv calls
-	 * or pass as 3 vec3s. Actually, let's just use the 3x3 uniform. We need
-	 * to add it or use an alternative. For GLES2 compat, pass as mat3. */
-	/* Since we declared u_normalMat as mat3 in the shader, we need
-	 * glUniformMatrix3fv. But it's not in our func table. Let's use
-	 * 3 separate vec3 uniforms instead — but that changes the shader.
-	 * Simpler: just pass the full 4x4 model matrix and compute normal mat
-	 * in the vertex shader. Let's adjust. */
-	/* Actually, we can approximate: if uniform scale only, normal matrix ≈
-	 * upper-left 3x3 of model. For correct results we'll need
-	 * glUniformMatrix3fv. Let's add a typedef and load it. */
-
-	/* For now, use the model matrix directly and normalize in the shader.
-	 * This is correct for uniform scale (which is our case). */
-	/* Overwrite: change shader to use mat4 for u_normalMat, pass modelMat */
+	/* Pass model matrix as normal matrix — the vertex shader extracts the
+	 * upper-left 3x3 and normalizes. Correct for uniform scale. */
 	gl.UniformMatrix4fv(p->u_normalMat, 1, GL_FALSE, model);
 
 	gl.Uniform3f(p->u_lightDir, p->lightX, p->lightY, p->lightZ);
@@ -855,36 +854,14 @@ Bitmap *Model3D::render(int width, int height)
 	gl.DisableVertexAttribArray(2);
 	gl.BindBuffer(GL_ARRAY_BUFFER, 0);
 
-	/* ---- Restore 2D-safe GL state ---- */
+	/* ---- Detach depth renderbuffer from Bitmap's FBO ---- */
+	gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+	                           GL_RENDERBUFFER, 0);
+
+	/* ---- Restore GL state ---- */
 	gl.Disable(GL_DEPTH_TEST);
 	gl.DepthMask(GL_FALSE);
 
-	/* ---- Read FBO pixels and copy to a Bitmap ---- */
-	gl.BindFramebuffer(GL_FRAMEBUFFER, p->fbo);
-
-	std::vector<uint8_t> pixels(width * height * 4);
-	gl.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
-	              pixels.data());
-
-	/* Flip vertically — OpenGL FBO has Y=0 at bottom,
-	 * Bitmap textures expect Y=0 at top */
-	const int rowBytes = width * 4;
-	std::vector<uint8_t> rowTmp(rowBytes);
-	for (int y = 0; y < height / 2; ++y)
-	{
-		uint8_t *top = &pixels[y * rowBytes];
-		uint8_t *bot = &pixels[(height - 1 - y) * rowBytes];
-		memcpy(rowTmp.data(), top, rowBytes);
-		memcpy(top, bot, rowBytes);
-		memcpy(bot, rowTmp.data(), rowBytes);
-	}
-
-	Bitmap *result = new Bitmap(width, height);
-	TEX::bind(result->getGLTypes().tex);
-	gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
-	                 GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-
-	/* ---- Restore previous GL state ---- */
 	FBO::bind(savedFBO);
 	glState.program.refresh();
 
