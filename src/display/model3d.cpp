@@ -807,27 +807,35 @@ Bitmap *Model3D::render(int width, int height)
 	gl.DisableVertexAttribArray(2);
 	gl.BindBuffer(GL_ARRAY_BUFFER, 0);
 
-	/* ---- Restore 2D-safe GL state before blit ---- */
+	/* ---- Restore 2D-safe GL state ---- */
 	gl.Disable(GL_DEPTH_TEST);
 	gl.DepthMask(GL_FALSE);
 	gl.Disable(GL_CULL_FACE);
 
-	/* ---- Copy FBO result to a Bitmap ---- */
+	/* ---- Read FBO pixels and copy to a Bitmap ---- */
+	gl.BindFramebuffer(GL_FRAMEBUFFER, p->fbo);
+
+	std::vector<uint8_t> pixels(width * height * 4);
+	gl.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
+	              pixels.data());
+
+	/* Flip vertically — OpenGL FBO has Y=0 at bottom,
+	 * Bitmap textures expect Y=0 at top */
+	const int rowBytes = width * 4;
+	std::vector<uint8_t> rowTmp(rowBytes);
+	for (int y = 0; y < height / 2; ++y)
+	{
+		uint8_t *top = &pixels[y * rowBytes];
+		uint8_t *bot = &pixels[(height - 1 - y) * rowBytes];
+		memcpy(rowTmp.data(), top, rowBytes);
+		memcpy(top, bot, rowBytes);
+		memcpy(bot, rowTmp.data(), rowBytes);
+	}
+
 	Bitmap *result = new Bitmap(width, height);
-	TEXFBO &resultTex = result->getGLTypes();
-
-	/* Build a temporary TEXFBO referencing our offscreen FBO */
-	TEXFBO srcFBO;
-	srcFBO.tex.gl = p->colorTex;
-	srcFBO.fbo.gl = p->fbo;
-	srcFBO.width = width;
-	srcFBO.height = height;
-	srcFBO.selfHires = 0;
-
-	GLMeta::blitBegin(resultTex);
-	GLMeta::blitSource(srcFBO);
-	GLMeta::blitRectangle(IntRect(0, 0, width, height), Vec2i(0, 0));
-	GLMeta::blitEnd();
+	TEX::bind(result->getGLTypes().tex);
+	gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
+	                 GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
 	/* ---- Restore previous GL state ---- */
 	FBO::bind(savedFBO);
