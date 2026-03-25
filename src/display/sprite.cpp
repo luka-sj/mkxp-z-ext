@@ -662,6 +662,26 @@ void Sprite::draw()
             shader->setBushDepth(p->efBushDepth);
             shader->setBushOpacity(p->bushOpacity.norm);
 
+            /* If the user's shader declares standard uniform names
+             * (opacity, tone, color), set them with the real values
+             * and neutralize the suffix's _mkxp_* uniforms so the
+             * effect isn't applied twice. */
+            if (shader->hasUserOpacity())
+            {
+                shader->setStdOpacity(p->opacity.norm);
+                shader->setOpacity(1.0f);
+            }
+            if (shader->hasUserTone())
+            {
+                shader->setStdTone(p->tone->norm);
+                shader->setTone(Vec4());
+            }
+            if (shader->hasUserColor())
+            {
+                shader->setStdColor(*blend);
+                shader->setColor(Vec4());
+            }
+
             shader->applyUniforms(customShader->getUniforms());
             shader->applyBitmaps(customShader->getBitmaps(), 1);
 

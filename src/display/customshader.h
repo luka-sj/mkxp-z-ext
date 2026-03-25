@@ -88,6 +88,17 @@ public:
 	void applyUniforms(const UniformMap &uniforms);
 	void applyBitmaps(const BitmapMap &bitmaps, int startUnit = 1);
 
+	/* True if the user's shader declares the standard uniform name,
+	 * meaning the user handles the effect and the suffix should be
+	 * neutralized to prevent double-application. */
+	bool hasUserOpacity() const { return u_stdOpacity >= 0; }
+	bool hasUserTone()    const { return u_stdTone >= 0; }
+	bool hasUserColor()   const { return u_stdColor >= 0; }
+
+	void setStdOpacity(float value);
+	void setStdTone(const Vec4 &value);
+	void setStdColor(const Vec4 &value);
+
 private:
 	GLint u_spriteMat;
 	GLint u_time;
@@ -97,6 +108,11 @@ private:
 	GLint u_invert;
 	GLint u_bushDepth;
 	GLint u_bushOpacity;
+
+	/* Locations of standard uniform names in the user's shader */
+	GLint u_stdOpacity;
+	GLint u_stdTone;
+	GLint u_stdColor;
 };
 
 struct CustomShaderPrivate;
