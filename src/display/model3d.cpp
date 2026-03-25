@@ -807,6 +807,11 @@ Bitmap *Model3D::render(int width, int height)
 	gl.DisableVertexAttribArray(2);
 	gl.BindBuffer(GL_ARRAY_BUFFER, 0);
 
+	/* ---- Restore 2D-safe GL state before blit ---- */
+	gl.Disable(GL_DEPTH_TEST);
+	gl.DepthMask(GL_FALSE);
+	gl.Disable(GL_CULL_FACE);
+
 	/* ---- Copy FBO result to a Bitmap ---- */
 	Bitmap *result = new Bitmap(width, height);
 	TEXFBO &resultTex = result->getGLTypes();
@@ -824,14 +829,8 @@ Bitmap *Model3D::render(int width, int height)
 	GLMeta::blitRectangle(IntRect(0, 0, width, height), Vec2i(0, 0));
 	GLMeta::blitEnd();
 
-	/* ---- Restore GL state ---- */
-	gl.Disable(GL_DEPTH_TEST);
-	gl.DepthMask(GL_FALSE);
-	gl.Disable(GL_CULL_FACE);
-
+	/* ---- Restore previous GL state ---- */
 	FBO::bind(savedFBO);
-
-	/* Restore the shader that was active before (if any) */
 	glState.program.refresh();
 
 	glState.scissorTest.pop();
