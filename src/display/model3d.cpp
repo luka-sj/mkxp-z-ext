@@ -508,6 +508,39 @@ Model3D::Model3D(const char *filename)
 			int fv = mesh.num_face_vertices[f];
 			int matId = mesh.material_ids[f];
 
+			/* Compute a flat face normal from the first triangle.
+			 * Used as fallback when the OBJ normals are missing or NaN. */
+			float faceNorm[3] = {0, 1, 0};
+			if (fv >= 3)
+			{
+				tinyobj::index_t i0 = mesh.indices[indexOffset + 0];
+				tinyobj::index_t i1 = mesh.indices[indexOffset + 1];
+				tinyobj::index_t i2 = mesh.indices[indexOffset + 2];
+				float ax = attrib.vertices[3*i0.vertex_index+0];
+				float ay = attrib.vertices[3*i0.vertex_index+1];
+				float az = attrib.vertices[3*i0.vertex_index+2];
+				float bx = attrib.vertices[3*i1.vertex_index+0];
+				float by = attrib.vertices[3*i1.vertex_index+1];
+				float bz = attrib.vertices[3*i1.vertex_index+2];
+				float cx = attrib.vertices[3*i2.vertex_index+0];
+				float cy = attrib.vertices[3*i2.vertex_index+1];
+				float cz = attrib.vertices[3*i2.vertex_index+2];
+				float e1x = bx-ax, e1y = by-ay, e1z = bz-az;
+				float e2x = cx-ax, e2y = cy-ay, e2z = cz-az;
+				faceNorm[0] = e1y*e2z - e1z*e2y;
+				faceNorm[1] = e1z*e2x - e1x*e2z;
+				faceNorm[2] = e1x*e2y - e1y*e2x;
+				float len = sqrtf(faceNorm[0]*faceNorm[0] +
+				                  faceNorm[1]*faceNorm[1] +
+				                  faceNorm[2]*faceNorm[2]);
+				if (len > 1e-8f)
+				{
+					faceNorm[0] /= len;
+					faceNorm[1] /= len;
+					faceNorm[2] /= len;
+				}
+			}
+
 			for (int v = 0; v < fv; ++v)
 			{
 				tinyobj::index_t idx = mesh.indices[indexOffset + v];
@@ -518,16 +551,26 @@ Model3D::Model3D(const char *filename)
 				verts.push_back(attrib.vertices[3 * idx.vertex_index + 1]);
 				verts.push_back(attrib.vertices[3 * idx.vertex_index + 2]);
 
-				/* Normal */
+				/* Normal — use OBJ normal if valid, else computed face normal */
+				bool useObjNormal = false;
 				if (idx.normal_index >= 0)
 				{
-					verts.push_back(attrib.normals[3 * idx.normal_index + 0]);
-					verts.push_back(attrib.normals[3 * idx.normal_index + 1]);
-					verts.push_back(attrib.normals[3 * idx.normal_index + 2]);
+					float nx = attrib.normals[3 * idx.normal_index + 0];
+					float ny = attrib.normals[3 * idx.normal_index + 1];
+					float nz = attrib.normals[3 * idx.normal_index + 2];
+					if (!(nx != nx) && !(ny != ny) && !(nz != nz)) /* !isnan */
+					{
+						verts.push_back(nx);
+						verts.push_back(ny);
+						verts.push_back(nz);
+						useObjNormal = true;
+					}
 				}
-				else
+				if (!useObjNormal)
 				{
-					verts.push_back(0); verts.push_back(1); verts.push_back(0);
+					verts.push_back(faceNorm[0]);
+					verts.push_back(faceNorm[1]);
+					verts.push_back(faceNorm[2]);
 				}
 
 				/* Texcoord */
@@ -578,6 +621,11 @@ Model3D::Model3D(const char *filename)
 					mg.texBitmap = bmp;
 					mg.diffuseTex = bmp->getGLTypes().tex;
 					mg.hasTex = true;
+
+					/* OBJ UVs often extend beyond 0-1, need repeat wrapping */
+					TEX::bind(mg.diffuseTex);
+					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 				}
 				catch (const Exception &e)
 				{
@@ -711,8 +759,8 @@ Bitmap *Model3D::render(int width, int height)
 	gl.Enable(GL_DEPTH_TEST);
 	gl.DepthFunc(GL_LESS);
 	gl.DepthMask(GL_TRUE);
-	gl.Enable(GL_CULL_FACE);
-	gl.CullFace(GL_BACK);
+	/* Don't cull faces — OBJ files have no guaranteed winding order */
+	gl.Disable(GL_CULL_FACE);
 	gl.Enable(GL_BLEND);
 	gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	gl.ClearColor(0, 0, 0, 0);
@@ -810,7 +858,6 @@ Bitmap *Model3D::render(int width, int height)
 	/* ---- Restore 2D-safe GL state ---- */
 	gl.Disable(GL_DEPTH_TEST);
 	gl.DepthMask(GL_FALSE);
-	gl.Disable(GL_CULL_FACE);
 
 	/* ---- Read FBO pixels and copy to a Bitmap ---- */
 	gl.BindFramebuffer(GL_FRAMEBUFFER, p->fbo);
