@@ -79,6 +79,20 @@ static void mat4_perspective(float out[16], float fovDeg, float aspect,
 	out[14] = (2.0f * zFar * zNear) / (zNear - zFar);
 }
 
+static void mat4_ortho(float out[16], float left, float right,
+                       float bottom, float top,
+                       float zNear, float zFar)
+{
+	memset(out, 0, sizeof(float) * 16);
+	out[0]  = 2.0f / (right - left);
+	out[5]  = 2.0f / (top - bottom);
+	out[10] = -2.0f / (zFar - zNear);
+	out[12] = -(right + left) / (right - left);
+	out[13] = -(top + bottom) / (top - bottom);
+	out[14] = -(zFar + zNear) / (zFar - zNear);
+	out[15] = 1.0f;
+}
+
 static void mat4_lookAt(float out[16],
                         float eyeX, float eyeY, float eyeZ,
                         float atX,  float atY,  float atZ,
@@ -590,6 +604,8 @@ Model3D::Model3D(const char *filename)
 			{
 				std::string texPath = baseDir + mat.diffuse_texname;
 
+				Debug() << "Model3D: loading texture: " << texPath.c_str();
+
 				/* Load texture via PhysFS + SDL_image directly,
 				 * bypassing Bitmap's path resolution which can
 				 * fail with extensions or special characters. */
@@ -608,9 +624,14 @@ Model3D::Model3D(const char *filename)
 					SDL_Surface *surf = IMG_Load_RW(&texOps, 1);
 					if (!surf)
 					{
-						Debug() << "Model3D: IMG_Load_RW failed for: " << texPath.c_str();
+						Debug() << "Model3D: IMG_Load_RW failed: "
+						        << SDL_GetError();
 						goto skipTex;
 					}
+
+					Debug() << "Model3D: loaded " << surf->w << "x" << surf->h
+					        << " format=0x" << std::hex << surf->format->format
+					        << std::dec;
 
 					/* Convert to RGBA */
 					SDL_Surface *rgba = SDL_ConvertSurfaceFormat(
@@ -619,7 +640,7 @@ Model3D::Model3D(const char *filename)
 
 					if (!rgba)
 					{
-						Debug() << "Model3D: surface convert failed for: " << texPath.c_str();
+						Debug() << "Model3D: surface convert failed";
 						goto skipTex;
 					}
 
@@ -636,6 +657,8 @@ Model3D::Model3D(const char *filename)
 
 					mg.texGL = tex;
 					mg.hasTex = true;
+
+					Debug() << "Model3D: texture uploaded OK, GL id=" << tex;
 
 					SDL_FreeSurface(rgba);
 				}
@@ -828,7 +851,20 @@ Bitmap *Model3D::render(int width, int height)
 
 	float farPlane = p->bboxRadius * 10.0f;
 	if (farPlane < 100.0f) farPlane = 100.0f;
-	mat4_perspective(proj, p->fov, (float)width / height, 0.1f, farPlane);
+
+	if (p->fov <= 0)
+	{
+		/* Orthographic projection — no perspective distortion.
+		 * Size the view volume to fit the model's bounding sphere. */
+		float aspect = (float)width / height;
+		float halfH = p->bboxRadius * 1.2f;
+		float halfW = halfH * aspect;
+		mat4_ortho(proj, -halfW, halfW, -halfH, halfH, 0.1f, farPlane);
+	}
+	else
+	{
+		mat4_perspective(proj, p->fov, (float)width / height, 0.1f, farPlane);
+	}
 	mat4_lookAt(view, p->camX, p->camY, p->camZ,
 	            p->bboxCenter[0], p->bboxCenter[1], p->bboxCenter[2],
 	            0, 1, 0);
