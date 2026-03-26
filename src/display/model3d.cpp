@@ -208,8 +208,9 @@ static void mat4_normalMat3(float out[9], const float mv[16])
 class PhysFSMaterialReader : public tinyobj::MaterialReader
 {
 public:
-	explicit PhysFSMaterialReader(const std::string &baseDir)
-	    : baseDir(baseDir)
+	PhysFSMaterialReader(const std::string &baseDir,
+	                     const std::string &fallbackMtl = "")
+	    : baseDir(baseDir), fallbackMtl(fallbackMtl)
 	{}
 
 	bool operator()(const std::string &matId,
@@ -221,11 +222,32 @@ public:
 		std::string path = baseDir + matId;
 
 		SDL_RWops ops;
+		bool opened = false;
+
+		/* Try the path from the mtllib directive first */
 		try
 		{
 			shState->fileSystem().openReadRaw(ops, path.c_str(), false);
+			opened = true;
 		}
 		catch (const Exception &)
+		{
+			/* Path may have encoding issues (e.g. Latin-1 é vs UTF-8).
+			 * Fall back to the MTL path derived from the OBJ filename,
+			 * which was provided by the user in the correct encoding. */
+			if (!fallbackMtl.empty())
+			{
+				try
+				{
+					shState->fileSystem().openReadRaw(ops, fallbackMtl.c_str(), false);
+					opened = true;
+					Debug() << "Model3D: MTL fallback succeeded: " << fallbackMtl.c_str();
+				}
+				catch (const Exception &) {}
+			}
+		}
+
+		if (!opened)
 		{
 			if (err)
 				*err = "Could not open material file: " + path;
@@ -252,6 +274,7 @@ public:
 
 private:
 	std::string baseDir;
+	std::string fallbackMtl;
 };
 
 /* ------------------------------------------------------------------ */
@@ -466,7 +489,15 @@ Model3D::Model3D(const char *filename)
 	std::vector<tinyobj::material_t> mats;
 	std::string warn, err;
 
-	PhysFSMaterialReader matReader(baseDir);
+	/* Build a fallback MTL path from the OBJ filename (same name, .mtl ext).
+	 * The mtllib directive inside the OBJ may have encoding issues
+	 * (e.g. Latin-1 vs UTF-8), but the user-provided OBJ path is reliable. */
+	std::string mtlFallback;
+	size_t dotPos = fnStr.find_last_of('.');
+	if (dotPos != std::string::npos)
+		mtlFallback = fnStr.substr(0, dotPos) + ".mtl";
+
+	PhysFSMaterialReader matReader(baseDir, mtlFallback);
 	std::istringstream objStream(objData);
 
 	bool ok = tinyobj::LoadObj(&attrib, &shapes, &mats, &warn, &err,
