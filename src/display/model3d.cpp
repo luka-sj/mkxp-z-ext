@@ -19,6 +19,7 @@
 
 #include "model3d.h"
 #include "bitmap.h"
+#include "customshader.h"
 #include "sharedstate.h"
 #include "debugwriter.h"
 #include "filesystem/filesystem.h"
@@ -330,6 +331,14 @@ struct Model3DPrivate
 	GLuint depthRbo;
 	int depthRboW, depthRboH;
 
+	/* Custom shader (user-provided fragment, compiled with 3D vert) */
+	CustomShader *customShader;
+	GLuint customProgram, customVert, customFrag;
+	GLint cu_modelMat, cu_viewMat, cu_projMat, cu_normalMat;
+	GLint cu_lightDir, cu_ambient;
+	GLint cu_diffuseTex, cu_diffuseColor;
+	std::string customShaderFile;
+
 	Model3DPrivate()
 	    : rotX(0), rotY(0), rotZ(0),
 	      scale(1.0f),
@@ -341,7 +350,8 @@ struct Model3DPrivate
 	      vbo(0), vertexCount(0),
 	      program(0), vertShader(0), fragShader(0), whiteTex(0),
 	      bboxRadius(1.0f),
-	      depthRbo(0), depthRboW(0), depthRboH(0)
+	      depthRbo(0), depthRboW(0), depthRboH(0),
+	      customShader(0), customProgram(0), customVert(0), customFrag(0)
 	{
 		bboxMin[0] = bboxMin[1] = bboxMin[2] = 0;
 		bboxMax[0] = bboxMax[1] = bboxMax[2] = 0;
@@ -364,6 +374,12 @@ struct Model3DPrivate
 			gl.DeleteShader(fragShader);
 		if (whiteTex)
 			gl.DeleteTextures(1, &whiteTex);
+		if (customProgram)
+			gl.DeleteProgram(customProgram);
+		if (customVert)
+			gl.DeleteShader(customVert);
+		if (customFrag)
+			gl.DeleteShader(customFrag);
 
 		if (depthRbo)
 			gl.DeleteRenderbuffers(1, &depthRbo);
@@ -837,6 +853,123 @@ DEF_ATTR_SIMPLE_M3D(Ambient, ambient)
 
 #undef DEF_ATTR_SIMPLE_M3D
 
+CustomShader *Model3D::getShader() const
+{
+	guardDisposed();
+	return p->customShader;
+}
+
+void Model3D::setShader(CustomShader *shader)
+{
+	guardDisposed();
+
+	/* Clean up previous custom program */
+	if (p->customProgram)
+	{
+		gl.DeleteProgram(p->customProgram);
+		p->customProgram = 0;
+	}
+	if (p->customVert)
+	{
+		gl.DeleteShader(p->customVert);
+		p->customVert = 0;
+	}
+	if (p->customFrag)
+	{
+		gl.DeleteShader(p->customFrag);
+		p->customFrag = 0;
+	}
+	p->customShaderFile.clear();
+	p->customShader = shader;
+
+	if (!shader || shader->isDisposed())
+		return;
+
+	/* Read the fragment shader source file */
+	const std::string &filename = shader->getFilename();
+	std::string fragSrc;
+
+	SDL_RWops ops;
+	try
+	{
+		shState->fileSystem().openReadRaw(ops, filename.c_str(), false);
+		Sint64 size = SDL_RWsize(&ops);
+		if (size > 0)
+		{
+			fragSrc.resize(size);
+			SDL_RWread(&ops, &fragSrc[0], 1, size);
+		}
+		SDL_RWclose(&ops);
+	}
+	catch (const Exception &e)
+	{
+		Debug() << "Model3D: Could not read shader file: " << e.msg;
+		p->customShader = 0;
+		return;
+	}
+
+	/* Compile with the 3D vertex shader */
+	try
+	{
+#ifdef MKXPZ_BUILD_XCODE
+		std::string vertSrc = mkxp_fs::contentsOfAssetAsString("Shaders/model3d", "vert");
+		p->customVert = compileShader(GL_VERTEX_SHADER,
+		                              vertSrc.c_str(), vertSrc.size(), "model3d.vert");
+#else
+		p->customVert = compileShader(GL_VERTEX_SHADER,
+		                              (const char *)___shader_model3d_vert,
+		                              ___shader_model3d_vert_len, "model3d.vert");
+#endif
+		p->customFrag = compileShader(GL_FRAGMENT_SHADER,
+		                              fragSrc.c_str(), fragSrc.size(),
+		                              filename.c_str());
+	}
+	catch (const Exception &e)
+	{
+		Debug() << "Model3D: Custom shader compile error: " << e.msg;
+		if (p->customVert) { gl.DeleteShader(p->customVert); p->customVert = 0; }
+		if (p->customFrag) { gl.DeleteShader(p->customFrag); p->customFrag = 0; }
+		p->customShader = 0;
+		return;
+	}
+
+	p->customProgram = gl.CreateProgram();
+	gl.AttachShader(p->customProgram, p->customVert);
+	gl.AttachShader(p->customProgram, p->customFrag);
+	gl.BindAttribLocation(p->customProgram, 0, "a_position");
+	gl.BindAttribLocation(p->customProgram, 1, "a_normal");
+	gl.BindAttribLocation(p->customProgram, 2, "a_texCoord");
+	gl.LinkProgram(p->customProgram);
+
+	GLint success = 0;
+	gl.GetProgramiv(p->customProgram, GL_LINK_STATUS, &success);
+	if (!success)
+	{
+		GLint logLen = 0;
+		gl.GetProgramiv(p->customProgram, GL_INFO_LOG_LENGTH, &logLen);
+		std::string log(logLen, '\0');
+		gl.GetProgramInfoLog(p->customProgram, logLen, 0, &log[0]);
+		Debug() << "Model3D: Custom shader link error:\n" << log.c_str();
+		gl.DeleteProgram(p->customProgram); p->customProgram = 0;
+		gl.DeleteShader(p->customVert); p->customVert = 0;
+		gl.DeleteShader(p->customFrag); p->customFrag = 0;
+		p->customShader = 0;
+		return;
+	}
+
+	/* Look up standard uniform locations in the custom program */
+	p->cu_modelMat     = gl.GetUniformLocation(p->customProgram, "u_modelMat");
+	p->cu_viewMat      = gl.GetUniformLocation(p->customProgram, "u_viewMat");
+	p->cu_projMat      = gl.GetUniformLocation(p->customProgram, "u_projMat");
+	p->cu_normalMat    = gl.GetUniformLocation(p->customProgram, "u_normalMat");
+	p->cu_lightDir     = gl.GetUniformLocation(p->customProgram, "u_lightDir");
+	p->cu_ambient      = gl.GetUniformLocation(p->customProgram, "u_ambient");
+	p->cu_diffuseTex   = gl.GetUniformLocation(p->customProgram, "u_diffuseTex");
+	p->cu_diffuseColor = gl.GetUniformLocation(p->customProgram, "u_diffuseColor");
+
+	p->customShaderFile = filename;
+}
+
 /* ------------------------------------------------------------------ */
 /*  render()                                                          */
 /* ------------------------------------------------------------------ */
@@ -929,17 +1062,47 @@ Bitmap *Model3D::render(int width, int height)
 	mat4_normalMat3(normalMat, mv);
 
 	/* ---- Bind shader & set uniforms ---- */
-	gl.UseProgram(p->program);
-	gl.UniformMatrix4fv(p->u_projMat, 1, GL_FALSE, proj);
-	gl.UniformMatrix4fv(p->u_viewMat, 1, GL_FALSE, view);
-	gl.UniformMatrix4fv(p->u_modelMat, 1, GL_FALSE, model);
+	bool useCustom = (p->customShader && !p->customShader->isDisposed()
+	                  && p->customProgram);
 
-	/* Pass model matrix as normal matrix — the vertex shader extracts the
-	 * upper-left 3x3 and normalizes. Correct for uniform scale. */
-	gl.UniformMatrix4fv(p->u_normalMat, 1, GL_FALSE, model);
+	GLuint prog      = useCustom ? p->customProgram : p->program;
+	GLint uModelMat  = useCustom ? p->cu_modelMat   : p->u_modelMat;
+	GLint uViewMat   = useCustom ? p->cu_viewMat    : p->u_viewMat;
+	GLint uProjMat   = useCustom ? p->cu_projMat    : p->u_projMat;
+	GLint uNormalMat = useCustom ? p->cu_normalMat  : p->u_normalMat;
+	GLint uLightDir  = useCustom ? p->cu_lightDir   : p->u_lightDir;
+	GLint uAmbient   = useCustom ? p->cu_ambient    : p->u_ambient;
+	GLint uDiffTex   = useCustom ? p->cu_diffuseTex : p->u_diffuseTex;
+	GLint uDiffColor = useCustom ? p->cu_diffuseColor : p->u_diffuseColor;
 
-	gl.Uniform3f(p->u_lightDir, p->lightX, p->lightY, p->lightZ);
-	gl.Uniform1f(p->u_ambient, p->ambient);
+	gl.UseProgram(prog);
+
+	if (uProjMat >= 0)   gl.UniformMatrix4fv(uProjMat, 1, GL_FALSE, proj);
+	if (uViewMat >= 0)   gl.UniformMatrix4fv(uViewMat, 1, GL_FALSE, view);
+	if (uModelMat >= 0)  gl.UniformMatrix4fv(uModelMat, 1, GL_FALSE, model);
+	if (uNormalMat >= 0) gl.UniformMatrix4fv(uNormalMat, 1, GL_FALSE, model);
+	if (uLightDir >= 0)  gl.Uniform3f(uLightDir, p->lightX, p->lightY, p->lightZ);
+	if (uAmbient >= 0)   gl.Uniform1f(uAmbient, p->ambient);
+
+	/* Apply user-defined uniforms and textures from the Shader object */
+	if (useCustom)
+	{
+		const UniformMap &uniforms = p->customShader->getUniforms();
+		for (auto it = uniforms.begin(); it != uniforms.end(); ++it)
+		{
+			GLint loc = gl.GetUniformLocation(prog, it->first.c_str());
+			if (loc < 0) continue;
+			const UniformValue &val = it->second;
+			switch (val.type)
+			{
+			case UNIFORM_FLOAT: gl.Uniform1f(loc, val.data.f); break;
+			case UNIFORM_INT:   gl.Uniform1i(loc, val.data.i); break;
+			case UNIFORM_VEC2:  gl.Uniform2f(loc, val.data.vec2[0], val.data.vec2[1]); break;
+			case UNIFORM_VEC3:  gl.Uniform3f(loc, val.data.vec3[0], val.data.vec3[1], val.data.vec3[2]); break;
+			case UNIFORM_VEC4:  gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]); break;
+			}
+		}
+	}
 
 	/* ---- Draw mesh ---- */
 	gl.BindBuffer(GL_ARRAY_BUFFER, p->vbo);
@@ -960,9 +1123,9 @@ Bitmap *Model3D::render(int width, int height)
 
 		gl.ActiveTexture(GL_TEXTURE0);
 		gl.BindTexture(GL_TEXTURE_2D, mg.hasTex ? mg.texGL : p->whiteTex);
-		gl.Uniform1i(p->u_diffuseTex, 0);
+		if (uDiffTex >= 0) gl.Uniform1i(uDiffTex, 0);
 
-		gl.Uniform4f(p->u_diffuseColor,
+		if (uDiffColor >= 0) gl.Uniform4f(uDiffColor,
 		             mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
 
 		gl.DrawArrays(GL_TRIANGLES, mg.startVertex, mg.vertexCount);
