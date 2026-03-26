@@ -885,28 +885,9 @@ void Model3D::setShader(CustomShader *shader)
 	if (!shader || shader->isDisposed())
 		return;
 
-	/* Read the fragment shader source file */
+	/* Use the source already read by CustomShader */
 	const std::string &filename = shader->getFilename();
-	std::string fragSrc;
-
-	SDL_RWops ops;
-	try
-	{
-		shState->fileSystem().openReadRaw(ops, filename.c_str(), false);
-		Sint64 size = SDL_RWsize(&ops);
-		if (size > 0)
-		{
-			fragSrc.resize(size);
-			SDL_RWread(&ops, &fragSrc[0], 1, size);
-		}
-		SDL_RWclose(&ops);
-	}
-	catch (const Exception &e)
-	{
-		Debug() << "Model3D: Could not read shader file: " << e.msg;
-		p->customShader = 0;
-		return;
-	}
+	const std::string &fragSrc = shader->getSource();
 
 	/* Compile with the 3D vertex shader */
 	try
@@ -926,11 +907,12 @@ void Model3D::setShader(CustomShader *shader)
 	}
 	catch (const Exception &e)
 	{
-		Debug() << "Model3D: Custom shader compile error: " << e.msg;
 		if (p->customVert) { gl.DeleteShader(p->customVert); p->customVert = 0; }
 		if (p->customFrag) { gl.DeleteShader(p->customFrag); p->customFrag = 0; }
 		p->customShader = 0;
-		return;
+		throw Exception(Exception::MKXPError,
+		                "Shader '%s' is not compatible with Model3D:\n%s",
+		                filename.c_str(), e.msg);
 	}
 
 	p->customProgram = gl.CreateProgram();
@@ -949,12 +931,13 @@ void Model3D::setShader(CustomShader *shader)
 		gl.GetProgramiv(p->customProgram, GL_INFO_LOG_LENGTH, &logLen);
 		std::string log(logLen, '\0');
 		gl.GetProgramInfoLog(p->customProgram, logLen, 0, &log[0]);
-		Debug() << "Model3D: Custom shader link error:\n" << log.c_str();
 		gl.DeleteProgram(p->customProgram); p->customProgram = 0;
 		gl.DeleteShader(p->customVert); p->customVert = 0;
 		gl.DeleteShader(p->customFrag); p->customFrag = 0;
 		p->customShader = 0;
-		return;
+		throw Exception(Exception::MKXPError,
+		                "Shader '%s' is not compatible with Model3D:\n%s",
+		                filename.c_str(), log.c_str());
 	}
 
 	/* Look up standard uniform locations in the custom program */

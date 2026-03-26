@@ -650,6 +650,10 @@ void Sprite::draw()
         auto drawCustomShader = [&](CustomShader *customShader)
         {
             CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
+            if (!shader)
+                throw Exception(Exception::MKXPError,
+                    "Shader '%s' is not compatible with sprites",
+                    customShader->getFilename().c_str());
             shader->bind();
             shader->applyViewportProj();
             shader->setSpriteMat(p->trans.getMatrix());
