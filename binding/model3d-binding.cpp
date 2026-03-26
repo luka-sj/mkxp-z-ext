@@ -23,6 +23,7 @@
 #include "sharedstate.h"
 #include "display/model3d.h"
 #include "display/bitmap.h"
+#include "display/customshader.h"
 
 #if RAPI_FULL > 187
 DEF_TYPE(Model3D);
@@ -64,6 +65,32 @@ RB_METHOD_GUARD(model3dRender) {
     bitmapInitProps(b, obj);
 
     return obj;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(model3dGetShader) {
+    RB_UNUSED_PARAM;
+    Model3D *m = getPrivateData<Model3D>(self);
+    return rb_iv_get(self, "shader");
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(model3dSetShader) {
+    VALUE shaderObj;
+    rb_get_args(argc, argv, "o", &shaderObj RB_ARG_END);
+
+    Model3D *m = getPrivateData<Model3D>(self);
+
+    CustomShader *shader = 0;
+    if (!NIL_P(shaderObj))
+        shader = getPrivateDataCheck<CustomShader>(shaderObj, CustomShaderType);
+
+    GFX_LOCK;
+    m->setShader(shader);
+    GFX_UNLOCK;
+
+    rb_iv_set(self, "shader", shaderObj);
+    return shaderObj;
 }
 RB_METHOD_GUARD_END
 
@@ -117,6 +144,8 @@ void model3dBindingInit() {
 
     _rb_define_method(klass, "initialize", model3dInitialize);
     _rb_define_method(klass, "render", model3dRender);
+    _rb_define_method(klass, "shader", model3dGetShader);
+    _rb_define_method(klass, "shader=", model3dSetShader);
 
     INIT_M3D_PROP_F(RotationX, "rotation_x")
     INIT_M3D_PROP_F(RotationY, "rotation_y")

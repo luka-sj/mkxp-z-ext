@@ -23,6 +23,7 @@
 #include "util/disposable.h"
 
 class Bitmap;
+class CustomShader;
 struct Model3DPrivate;
 
 class Model3D : public Disposable
@@ -66,6 +67,10 @@ public:
 	void setLightZ(float value);
 	float getAmbient() const;
 	void setAmbient(float value);
+
+	/* Custom shader */
+	CustomShader *getShader() const;
+	void setShader(CustomShader *shader);
 
 	/* Render the model to a Bitmap */
 	Bitmap *render(int width, int height);
