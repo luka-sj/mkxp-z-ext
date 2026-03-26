@@ -869,15 +869,27 @@ Bitmap *Model3D::render(int width, int height)
 	            p->bboxCenter[0], p->bboxCenter[1], p->bboxCenter[2],
 	            0, 1, 0);
 
-	mat4_translate(tmp1, p->posX, p->posY, p->posZ);
-	mat4_rotateZ(tmp2, p->rotZ * (float)M_PI / 180.0f);
-	mat4_multiply(tmp3, tmp1, tmp2);
+	/* Rotate around the base-center of the bounding box so the
+	 * building's ground floor stays anchored in place. Sequence:
+	 *   1. translate base-center to origin
+	 *   2. scale
+	 *   3. rotate
+	 *   4. translate back + apply user position offset */
+	float pivotX = p->bboxCenter[0];
+	float pivotY = p->bboxMin[1];
+	float pivotZ = p->bboxCenter[2];
+
+	mat4_translate(tmp1, pivotX + p->posX, pivotY + p->posY, pivotZ + p->posZ);
 	mat4_rotateY(tmp2, p->rotY * (float)M_PI / 180.0f);
-	mat4_multiply(tmp4, tmp3, tmp2);
+	mat4_multiply(tmp3, tmp1, tmp2);
 	mat4_rotateX(tmp2, p->rotX * (float)M_PI / 180.0f);
+	mat4_multiply(tmp4, tmp3, tmp2);
+	mat4_rotateZ(tmp2, p->rotZ * (float)M_PI / 180.0f);
 	mat4_multiply(tmp3, tmp4, tmp2);
 	mat4_scale(tmp1, p->scale);
-	mat4_multiply(model, tmp3, tmp1);
+	mat4_multiply(tmp4, tmp3, tmp1);
+	mat4_translate(tmp1, -pivotX, -pivotY, -pivotZ);
+	mat4_multiply(model, tmp4, tmp1);
 
 	/* Normal matrix: inverse-transpose of model-view 3x3 */
 	float mv[16];
