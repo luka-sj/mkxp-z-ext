@@ -135,6 +135,7 @@ public:
 	~CustomShader();
 
 	const std::string &getFilename() const;
+	const std::string &getSource() const;
 	CustomShaderImpl *getShader() const;
 	CustomSpriteShaderImpl *getSpriteShader() const;
 
