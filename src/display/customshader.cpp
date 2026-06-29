@@ -97,6 +97,56 @@ static const char *spriteVert =
 	"    v_texCoord = texCoord * texSizeInv;\n"
 	"}\n";
 
+// Insert `inject` into GLSL `src` after any leading #version / #extension
+// directives, which must remain the first statements in the source.
+static void insertAfterDirectives(std::string &src, const std::string &inject)
+{
+	size_t insertPos = 0;
+	size_t searchPos = 0;
+	while (searchPos < src.size())
+	{
+		// Skip whitespace
+		while (searchPos < src.size() && (src[searchPos] == ' ' || src[searchPos] == '\t' ||
+		       src[searchPos] == '\n' || src[searchPos] == '\r'))
+			searchPos++;
+
+		if (searchPos >= src.size())
+			break;
+
+		// Check for preprocessor directives that must come first
+		if (src[searchPos] == '#')
+		{
+			size_t dirStart = searchPos + 1;
+			while (dirStart < src.size() && (src[dirStart] == ' ' || src[dirStart] == '\t'))
+				dirStart++;
+
+			bool isSpecialDir = false;
+			if (src.compare(dirStart, 7, "version") == 0)
+				isSpecialDir = true;
+			else if (src.compare(dirStart, 9, "extension") == 0)
+				isSpecialDir = true;
+
+			if (isSpecialDir)
+			{
+				// Skip to end of line (include the newline)
+				size_t eol = src.find('\n', searchPos);
+				if (eol == std::string::npos)
+					eol = src.size();
+				else
+					eol++;
+				insertPos = eol;
+				searchPos = eol;
+				continue;
+			}
+		}
+
+		// Not a #version or #extension line, stop here
+		break;
+	}
+
+	src.insert(insertPos, inject);
+}
+
 CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
                                    const char *fragName)
 {
@@ -118,9 +168,14 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 		                fragName, log.c_str());
 	}
 
-	// Compile fragment shader with error handling
-	const GLchar *fragSources[1] = { fragContents };
-	GLint fragLengths[1] = { fragSize };
+	// Compile fragment shader with error handling. Inject the GLES/desktop
+	// precision header (common.h) the built-in shaders get, so custom
+	// shaders compile on OpenGL ES (no default float precision otherwise).
+	std::string fragSrc(fragContents, fragSize);
+	insertAfterDirectives(fragSrc, Shader::commonHeaderSource(true));
+
+	const GLchar *fragSources[1] = { fragSrc.c_str() };
+	GLint fragLengths[1] = { (GLint)fragSrc.size() };
 
 	gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
 	gl.CompileShader(fragShader);
@@ -310,16 +365,13 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 	// Replace "main" with "_mkxp_user_main" at the found position
 	src.replace(mainPos, 4, "_mkxp_user_main");
 
-	// Built-in effect uniform declarations to inject.
-	// Desktop GLSL doesn't recognize precision qualifiers (lowp, mediump,
-	// highp) natively — the built-in shaders get them #defined away via
-	// common.h, but custom shaders are compiled without that header.
-	// Inject the same defines so the qualifiers compile on all platforms.
-	std::string uniforms;
-	if (!gl.glsles)
-		uniforms = "#define lowp\n#define mediump\n#define highp\n";
+	// Prepend the GLES/desktop precision header (common.h) the built-in
+	// shaders receive — on GLES it declares the default float precision, on
+	// desktop it #defines the precision qualifiers (lowp/mediump/highp) away
+	// — followed by the built-in effect uniform declarations.
+	std::string inject = Shader::commonHeaderSource(true);
 
-	uniforms +=
+	inject +=
 		"uniform lowp vec4 _mkxp_tone;\n"
 		"uniform lowp float _mkxp_opacity;\n"
 		"uniform lowp vec4 _mkxp_color;\n"
@@ -327,54 +379,8 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 		"uniform lowp float _mkxp_bushDepth;\n"
 		"uniform lowp float _mkxp_bushOpacity;\n";
 
-	// Find insertion point after #version and #extension directives,
-	// since these must appear before any other statements in GLSL.
-	size_t insertPos = 0;
-	size_t searchPos = 0;
-	while (searchPos < src.size())
-	{
-		// Skip whitespace
-		while (searchPos < src.size() && (src[searchPos] == ' ' || src[searchPos] == '\t' ||
-		       src[searchPos] == '\n' || src[searchPos] == '\r'))
-			searchPos++;
-
-		if (searchPos >= src.size())
-			break;
-
-		// Check for preprocessor directives that must come first
-		if (src[searchPos] == '#')
-		{
-			// Check if it's #version or #extension
-			size_t dirStart = searchPos + 1;
-			while (dirStart < src.size() && (src[dirStart] == ' ' || src[dirStart] == '\t'))
-				dirStart++;
-
-			bool isSpecialDir = false;
-			if (src.compare(dirStart, 7, "version") == 0)
-				isSpecialDir = true;
-			else if (src.compare(dirStart, 9, "extension") == 0)
-				isSpecialDir = true;
-
-			if (isSpecialDir)
-			{
-				// Skip to end of line
-				size_t eol = src.find('\n', searchPos);
-				if (eol == std::string::npos)
-					eol = src.size();
-				else
-					eol++; // include the newline
-				insertPos = eol;
-				searchPos = eol;
-				continue;
-			}
-		}
-
-		// Not a #version or #extension line, stop here
-		break;
-	}
-
-	// Insert uniforms after the directives
-	src.insert(insertPos, uniforms);
+	// Insert after any #version / #extension directives, which must come first.
+	insertAfterDirectives(src, inject);
 
 	return src + spriteFragSuffix;
 }
@@ -438,9 +444,13 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 	{
 		Debug() << "CustomShader [" << fragName << "]: Falling back to unwrapped shader (no built-in effects)";
 
-		// Fallback: compile original shader without wrapping
-		const GLchar *fragSources[1] = { fragContents };
-		GLint fragLengths[1] = { fragSize };
+		// Fallback: compile original shader without wrapping, but still
+		// inject the precision header so it compiles on GLES.
+		std::string fragSrc(fragContents, fragSize);
+		insertAfterDirectives(fragSrc, Shader::commonHeaderSource(true));
+
+		const GLchar *fragSources[1] = { fragSrc.c_str() };
+		GLint fragLengths[1] = { (GLint)fragSrc.size() };
 
 		gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
 		gl.CompileShader(fragShader);

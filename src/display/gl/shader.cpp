@@ -148,6 +148,25 @@ std::string &Shader::commonHeader() {
 }
 #endif
 
+std::string Shader::commonHeaderSource(bool fragmentShader)
+{
+	std::string src;
+
+	if (gl.glsles)
+		src += "#define GLSLES\n";
+
+	if (fragmentShader)
+		src += "#define FRAGMENT_SHADER\n";
+
+#ifndef MKXPZ_BUILD_XCODE
+	src.append((const char*) ___shader_common_h, ___shader_common_h_len);
+#else
+	src += Shader::commonHeader();
+#endif
+
+	return src;
+}
+
 static void setupShaderSource(GLuint shader, GLenum type,
                               const unsigned char *body, int bodySize)
 {
