@@ -43,6 +43,12 @@ public:
     
     static std::string &commonHeader();
 
+    /* Builds the precision preamble (the GLSLES/FRAGMENT_SHADER #define
+     * guards plus common.h) that setupShaderSource prepends to built-in
+     * shaders. Exposed for custom shaders, which are compiled standalone
+     * and must inject the same header for GLES float-precision. */
+    static std::string commonHeaderSource(bool fragmentShader);
+
 protected:
 	Shader();
 	~Shader();

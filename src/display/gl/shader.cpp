@@ -122,6 +122,21 @@ void Shader::unbind()
 	glState.program.set(0);
 }
 
+std::string Shader::commonHeaderSource(bool fragmentShader)
+{
+	std::string src;
+
+	if (gl.glsles)
+		src += "#define GLSLES\n";
+
+	if (fragmentShader)
+		src += "#define FRAGMENT_SHADER\n";
+
+	src.append((const char*) mkxp_shader_common_h, mkxp_shader_common_h_len);
+
+	return src;
+}
+
 static void setupShaderSource(GLuint shader, GLenum type,
                               const unsigned char *body, int bodySize)
 {
