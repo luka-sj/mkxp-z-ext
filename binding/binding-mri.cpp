@@ -169,6 +169,7 @@ json5pp::value rb2json(VALUE v);
 RB_METHOD(mkxpParseCSV);
 RB_METHOD(mkxpConsolePoll);
 RB_METHOD(mkxpConsoleWrite);
+RB_METHOD(mkxpConsoleWritePlain);
 
 static void mriBindingInit() {
     tableBindingInit();
@@ -241,6 +242,7 @@ static void mriBindingInit() {
     _rb_define_module_function(mod, "puts", mkxpPuts);
     _rb_define_module_function(mod, "_console_poll", mkxpConsolePoll);
     _rb_define_module_function(mod, "_console_write", mkxpConsoleWrite);
+    _rb_define_module_function(mod, "_console_write_plain", mkxpConsoleWritePlain);
 #if RAPI_FULL >= 200
     _rb_define_module_function(mod, "_capture_binding", mkxpCaptureBinding);
     rb_gc_register_address(&consoleCallerBinding);
@@ -445,6 +447,28 @@ RB_METHOD(mkxpConsoleWrite) {
 
     if (consoleInput)
         consoleInput->writeLine(str, true);
+
+    return Qnil;
+}
+
+/* Unhighlighted console output; carries the redirected Ruby $stdout.
+ * Falls back to the real stdout when the console isn't running. */
+RB_METHOD(mkxpConsoleWritePlain) {
+    RB_UNUSED_PARAM;
+
+    const char *str;
+    rb_get_args(argc, argv, "z", &str RB_ARG_END);
+
+    if (consoleInput)
+    {
+        consoleInput->writeLine(str, false);
+    }
+    else
+    {
+        fputs(str, stdout);
+        fputc('\n', stdout);
+        fflush(stdout);
+    }
 
     return Qnil;
 }
@@ -1414,7 +1438,74 @@ static void mriBindingExecute() {
             "  end\n"
             "end\n"
             "\n"
-            "$stdout.sync = true\n"
+            /* Route Ruby's $stdout (puts/print/printf/p, i.e. the game's
+             * echo/echoln logging) through the console writer so free-form
+             * output can't desync the prompt's cursor bookkeeping. Line
+             * buffered; no fd/pipe interception involved. */
+            "module MKXP_Console\n"
+            "  class StdoutShim\n"
+            "    def initialize\n"
+            "      @buffer = +''\n"
+            "    end\n"
+            "\n"
+            "    def write(*args)\n"
+            "      total = 0\n"
+            "      args.each do |arg|\n"
+            "        s = arg.to_s\n"
+            "        total += s.bytesize\n"
+            "        @buffer << s\n"
+            "      end\n"
+            "      while (nl = @buffer.index(\"\\n\"))\n"
+            "        System._console_write_plain(@buffer.slice!(0, nl + 1).chomp)\n"
+            "      end\n"
+            "      total\n"
+            "    end\n"
+            "\n"
+            "    def <<(obj)\n"
+            "      write(obj)\n"
+            "      self\n"
+            "    end\n"
+            "\n"
+            "    def print(*args)\n"
+            "      write(*args)\n"
+            "      nil\n"
+            "    end\n"
+            "\n"
+            "    def puts(*args)\n"
+            "      if args.empty?\n"
+            "        write(\"\\n\")\n"
+            "      else\n"
+            "        args.flatten.each do |arg|\n"
+            "          s = arg.to_s\n"
+            "          write(s)\n"
+            "          write(\"\\n\") unless s.end_with?(\"\\n\")\n"
+            "        end\n"
+            "      end\n"
+            "      nil\n"
+            "    end\n"
+            "\n"
+            "    def printf(*args)\n"
+            "      write(sprintf(*args)) unless args.empty?\n"
+            "      nil\n"
+            "    end\n"
+            "\n"
+            "    def flush\n"
+            "      System._console_write_plain(@buffer.dup) unless @buffer.empty?\n"
+            "      @buffer.clear\n"
+            "      self\n"
+            "    end\n"
+            "\n"
+            "    def sync; true; end\n"
+            "    def sync=(value); value; end\n"
+            "    def tty?; false; end\n"
+            "    alias isatty tty?\n"
+            "    def fileno; 1; end\n"
+            "  end\n"
+            "\n"
+            "  STDOUT_SHIM = StdoutShim.new\n"
+            "end\n"
+            "\n"
+            "$stdout = MKXP_Console::STDOUT_SHIM\n"
         );
     }
 
@@ -1434,6 +1525,16 @@ static void mriBindingExecute() {
 
     if (consoleInput)
     {
+        /* Give Ruby its real stdout back before the console writer dies.
+         * Protected eval: this runs on the shutdown path where an
+         * exception may already be pending. */
+        int stdoutRestoreState = 0;
+        rb_eval_string_protect(
+            "$stdout = STDOUT if defined?(MKXP_Console::StdoutShim) && "
+            "$stdout.is_a?(MKXP_Console::StdoutShim)",
+            &stdoutRestoreState);
+        (void)stdoutRestoreState;
+
         debugOutputHandler = nullptr;
         consoleInput->stop();
         delete consoleInput;
