@@ -13,6 +13,7 @@
 #include <poll.h>
 #include <unistd.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 #endif
 
 void (*debugOutputHandler)(const std::string &line) = nullptr;
@@ -219,6 +220,30 @@ static void rawWrite(const char *str)
 	rawWrite(str, strlen(str));
 }
 
+/* Current terminal width in columns; wrap math depends on it, so it is
+ * re-queried on every render (cheap, and self-corrects after a resize). */
+static size_t terminalWidth()
+{
+#ifdef __WIN32__
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+	if (GetConsoleScreenBufferInfo(h, &info) && info.dwSize.X > 0)
+		return (size_t)info.dwSize.X;
+#else
+	struct winsize ws;
+	if (ioctl(STDERR_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+		return (size_t)ws.ws_col;
+#endif
+	return 80;
+}
+
+static void appendCsi(std::string &buf, size_t n, char cmd)
+{
+	char tmp[32];
+	snprintf(tmp, sizeof(tmp), "\033[%u%c", (unsigned)n, cmd);
+	buf += tmp;
+}
+
 static bool stdinReady(int timeoutMs)
 {
 #ifdef __WIN32__
@@ -251,6 +276,9 @@ static bool stdinReadChar(char &c)
 ConsoleInput::ConsoleInput()
     : thread(nullptr),
       mutex(SDL_CreateMutex()),
+      writeMutex(SDL_CreateMutex()),
+      lastRenderRows(0),
+      lastCursorRow(0),
       needsRedraw(false),
       cursorPos(0),
       historyIndex(-1),
@@ -264,6 +292,7 @@ ConsoleInput::~ConsoleInput()
 {
 	stop();
 	SDL_DestroyMutex(mutex);
+	SDL_DestroyMutex(writeMutex);
 }
 
 void ConsoleInput::start()
@@ -306,15 +335,28 @@ bool ConsoleInput::poll(std::string &out)
 void ConsoleInput::writeLine(const std::string &line, bool highlight)
 {
 	/* Write directly to the terminal from whatever thread calls us.
-	 * Build the whole line into one buffer so a single write() is
-	 * as close to atomic as we can get. */
-	std::string buf = "\r\033[K";
+	 * The whole payload goes out as one buffered write under writeMutex
+	 * so it cannot interleave with a concurrent prompt redraw. */
+	std::string buf;
+
+	SDL_LockMutex(writeMutex);
+
+	/* Return to the first row of the prompt render and wipe it (the
+	 * input may span several wrapped rows), then print the output. */
+	if (lastCursorRow > 0)
+		appendCsi(buf, lastCursorRow, 'A');
+	buf += "\r\033[J";
 	if (highlight)
 		buf += highlightRuby(line);
 	else
 		buf += line;
 	buf += "\n";
 	rawWrite(buf);
+
+	lastRenderRows = 0;
+	lastCursorRow = 0;
+
+	SDL_UnlockMutex(writeMutex);
 
 	SDL_LockMutex(mutex);
 	needsRedraw = true;
@@ -323,24 +365,66 @@ void ConsoleInput::writeLine(const std::string &line, bool highlight)
 
 void ConsoleInput::redrawInput()
 {
-	rawWrite("\r\033[K");
-	rawWrite(CLR_PROMPT);
-	rawWrite(PROMPT, PROMPT_LEN);
-	rawWrite(CLR_RESET);
-	rawWrite(inputLine);
+	SDL_LockMutex(writeMutex);
 
-	int back = (int)inputLine.size() - (int)cursorPos;
-	if (back > 0)
-	{
-		char buf[32];
-		snprintf(buf, sizeof(buf), "\033[%dD", back);
-		rawWrite(buf);
-	}
+	size_t width = terminalWidth();
+
+	std::string buf;
+
+	/* Return to the first row of the previous render and wipe it. */
+	if (lastCursorRow > 0)
+		appendCsi(buf, lastCursorRow, 'A');
+	buf += "\r\033[J";
+
+	buf += CLR_PROMPT;
+	buf += PROMPT;
+	buf += CLR_RESET;
+	buf += inputLine;
+
+	size_t total = PROMPT_LEN + inputLine.size();
+
+	/* When the text ends flush with the right edge the terminal leaves
+	 * the cursor in the deferred-wrap state; commit the wrap so the
+	 * physical position is unambiguous. */
+	if (total % width == 0)
+		buf += "\n";
+
+	size_t endRow = total / width;
+	size_t curAbs = PROMPT_LEN + cursorPos;
+	size_t curRow = curAbs / width;
+	size_t curCol = curAbs % width;
+
+	/* Move from the end of the drawn text to the logical cursor. */
+	if (endRow > curRow)
+		appendCsi(buf, endRow - curRow, 'A');
+	buf += "\r";
+	if (curCol > 0)
+		appendCsi(buf, curCol, 'C');
+
+	rawWrite(buf);
+
+	lastRenderRows = endRow + 1;
+	lastCursorRow = curRow;
+
+	SDL_UnlockMutex(writeMutex);
 }
 
 void ConsoleInput::submitLine()
 {
-	rawWrite("\n");
+	SDL_LockMutex(writeMutex);
+	{
+		/* Step below the whole (possibly wrapped) input block before
+		 * opening the line the output/next prompt will land on. */
+		std::string buf;
+		if (lastRenderRows > 0 && lastCursorRow < lastRenderRows - 1)
+			appendCsi(buf, lastRenderRows - 1 - lastCursorRow, 'B');
+		buf += "\n";
+		rawWrite(buf);
+
+		lastRenderRows = 0;
+		lastCursorRow = 0;
+	}
+	SDL_UnlockMutex(writeMutex);
 
 	if (!inputLine.empty())
 	{

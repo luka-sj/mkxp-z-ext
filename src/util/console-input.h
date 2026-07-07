@@ -37,6 +37,15 @@ private:
 	SDL_Thread *thread;
 	SDL_mutex *mutex;
 
+	/* Serializes all terminal writes (prompt redraws vs. writeLine from
+	 * other threads) and guards the render-geometry state below. */
+	SDL_mutex *writeMutex;
+
+	/* Physical rows occupied by the last prompt render, and which of
+	 * those rows the cursor was left on (both 0 when no prompt is up). */
+	size_t lastRenderRows;
+	size_t lastCursorRow;
+
 	std::queue<std::string> inputQueue;
 	bool needsRedraw;
 
