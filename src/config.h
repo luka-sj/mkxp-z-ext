@@ -36,6 +36,9 @@ struct Config {
     
     bool debugMode;
     bool winConsole;
+    /* Loopback TCP port for the agent console pipe; 0 = disabled.
+     * Only honored in debug mode. */
+    int consoleAgentPort;
     bool preferMetalRenderer;
     bool displayFPS;
     bool printFPS;
