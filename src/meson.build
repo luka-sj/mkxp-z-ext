@@ -1274,6 +1274,7 @@ main_source = files(
 
     'util/iniconfig.cpp',
     'util/win-consoleutils.cpp',
+    'util/console-input.cpp',
 
     'etc/etc.cpp',
     'etc/table.cpp',
