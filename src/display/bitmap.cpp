@@ -2609,7 +2609,7 @@ Color Bitmap::getPixel(int x, int y) const
     GUARD_ANIMATED;
     
     if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling getPixel on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+        // Debug() << "GAME BUG: Game is calling getPixel on low-res Bitmap; you may want to patch the game to improve graphics quality.";
 
         int xHires = x * p->selfHires->width() / width();
         int yHires = y * p->selfHires->height() / height();
@@ -2680,7 +2680,7 @@ void Bitmap::setPixel(int x, int y, const Color &color)
     GUARD_ANIMATED;
     
     if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling setPixel on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+        // Debug() << "GAME BUG: Game is calling setPixel on low-res Bitmap; you may want to patch the game to improve graphics quality.";
 
         int xHires = x * p->selfHires->width() / width();
         int yHires = y * p->selfHires->height() / height();
@@ -2741,7 +2741,7 @@ bool Bitmap::getRaw(void *output, int output_size)
     guardDisposed();
     
     if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling getRaw on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+        // Debug() << "GAME BUG: Game is calling getRaw on low-res Bitmap; you may want to patch the game to improve graphics quality.";
     }
 
     if (!p->animation.enabled && (p->surface || p->megaSurface)) {
@@ -2760,7 +2760,7 @@ void Bitmap::replaceRaw(void *pixel_data, int size)
     guardDisposed();
     
     if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling replaceRaw on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+        // Debug() << "GAME BUG: Game is calling replaceRaw on low-res Bitmap; you may want to patch the game to improve graphics quality.";
     }
 
     int w = width();
@@ -2791,7 +2791,7 @@ void Bitmap::saveToFile(const char *filename)
     guardDisposed();
     
     if (hasHires()) {
-        Debug() << "GAME BUG: Game is calling saveToFile on low-res Bitmap; you may want to patch the game to improve graphics quality.";
+        // Debug() << "GAME BUG: Game is calling saveToFile on low-res Bitmap; you may want to patch the game to improve graphics quality.";
     }
 
     SDL_Surface *surf;
