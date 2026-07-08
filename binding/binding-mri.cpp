@@ -1428,6 +1428,17 @@ static void mriBindingExecute() {
          * frame and eval in the live caller-of-Graphics.update binding.
          * Output is plain terminal text (human) / NDJSON (agent). */
         rb_eval_string(
+            /* The engine's freopen leaves Ruby's $stdout block-buffered
+             * (sync=false) while $stderr is unbuffered. Game output
+             * (echoln -> printf -> $stdout) would then lag behind the
+             * console's cooked-mode echo and eval output, desyncing the
+             * cursor. Force it unbuffered so everything hits the console
+             * in program order at the live cursor. */
+            "$stdout.sync = true\n"
+            "$stderr.sync = true\n"
+            "STDOUT.sync = true\n"
+            "STDERR.sync = true\n"
+            "\n"
             "module MKXP_Console\n"
             "  @binding = TOPLEVEL_BINDING\n"
             "\n"
