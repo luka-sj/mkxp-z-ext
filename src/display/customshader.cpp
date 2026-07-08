@@ -552,7 +552,7 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 
 	if (!wrappedSrc.empty())
 	{
-		Debug() << "CustomShader [" << fragName << "]: Wrapped source built successfully";
+		// Debug() << "CustomShader [" << fragName << "]: Wrapped source built successfully";
 
 		const GLchar *wrapSources[1] = { wrappedSrc.c_str() };
 		GLint wrapLengths[1] = { (GLint)wrappedSrc.size() };
@@ -566,19 +566,23 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		if (!wrapped)
 		{
 			std::string log = getShaderLog(fragShader);
-			Debug() << "CustomShader [" << fragName << "]: Wrapped shader FAILED to compile:\n" << log.c_str();
-			Debug() << "CustomShader [" << fragName << "]: Wrapped source:\n" << wrappedSrc.c_str();
+			// Debug() << "CustomShader [" << fragName << "]: Wrapped shader FAILED to compile:\n" << log.c_str();
+			// Debug() << "CustomShader [" << fragName << "]: Wrapped source:\n" << wrappedSrc.c_str();
 		}
 		else
 		{
-			Debug() << "CustomShader [" << fragName << "]: Wrapped shader compiled OK";
+			// Debug() << "CustomShader [" << fragName << "]: Wrapped shader compiled OK";
 			compiledFragSrc = wrappedSrc;
 		}
+	}
+	else
+	{
+		// Debug() << "CustomShader [" << fragName << "]: buildWrappedFragSource failed (main not found)";
 	}
 
 	if (!wrapped)
 	{
-		Debug() << "CustomShader [" << fragName << "]: Falling back to unwrapped shader (no built-in effects)";
+		// Debug() << "CustomShader [" << fragName << "]: Falling back to unwrapped shader (no built-in effects)";
 
 		// Fallback path — but check the fallback cache one more time
 		GLuint cachedFallback = findCachedProgram(vertSrc, fallbackSrc);
