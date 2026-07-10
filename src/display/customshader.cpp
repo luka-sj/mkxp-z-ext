@@ -632,6 +632,7 @@ void CustomSpriteShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUni
 struct CustomShaderPrivate
 {
 	std::string filename;
+	std::string source;
 	CustomShaderImpl *shader;
 	CustomSpriteShaderImpl *spriteShader;
 	UniformMap uniforms;
@@ -662,26 +663,56 @@ CustomShader::CustomShader(const char *filename)
 		                "Shader file '%s' not found", filename);
 	}
 
-	// Read the fragment shader file
-	std::string fragContents;
-	if (!readFile(filename, fragContents))
+	if (!readFile(filename, p->source))
 	{
 		delete p;
 		throw Exception(Exception::RGSSError,
 		                "Failed to read shader file '%s'", filename);
 	}
 
+	/* Validate the fragment GLSL by compiling it standalone.
+	 * Syntax errors crash here regardless of 2D/3D context. */
+	GLuint testFrag = gl.CreateShader(GL_FRAGMENT_SHADER);
+	const GLchar *src = p->source.c_str();
+	GLint len = (GLint)p->source.size();
+	gl.ShaderSource(testFrag, 1, &src, &len);
+	gl.CompileShader(testFrag);
+
+	GLint success = 0;
+	gl.GetShaderiv(testFrag, GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		std::string log = getShaderLog(testFrag);
+		gl.DeleteShader(testFrag);
+		delete p;
+		throw Exception(Exception::MKXPError,
+		                "Shader compilation failed for '%s':\n%s",
+		                filename, log.c_str());
+	}
+	gl.DeleteShader(testFrag);
+
+	/* Compile for 2D use. Link failures are expected for 3D-only
+	 * shaders (varyings like v_normal don't exist in 2D vertex
+	 * shaders). The fragment GLSL is already validated above,
+	 * so link failures here only mean vertex/fragment mismatch. */
 	try
 	{
 		p->shader = new CustomShaderImpl(
-			fragContents.c_str(), fragContents.size(), filename);
-		p->spriteShader = new CustomSpriteShaderImpl(
-			fragContents.c_str(), fragContents.size(), filename);
+			p->source.c_str(), p->source.size(), filename);
 	}
-	catch (const Exception &e)
+	catch (const Exception &)
 	{
-		delete p;
-		throw;
+		p->shader = 0;
+	}
+
+	try
+	{
+		p->spriteShader = new CustomSpriteShaderImpl(
+			p->source.c_str(), p->source.size(), filename);
+	}
+	catch (const Exception &)
+	{
+		p->spriteShader = 0;
 	}
 }
 
@@ -694,6 +725,12 @@ const std::string &CustomShader::getFilename() const
 {
 	guardDisposed();
 	return p->filename;
+}
+
+const std::string &CustomShader::getSource() const
+{
+	guardDisposed();
+	return p->source;
 }
 
 CustomShaderImpl *CustomShader::getShader() const
