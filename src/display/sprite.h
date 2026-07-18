@@ -80,6 +80,11 @@ public:
 	DECL_ATTR( Shader,      class CustomShader* )
 	DECL_ATTR( Shaders,     std::vector<class CustomShader*>& )
 
+	/* Corner geometry: place the rendered quad at four viewport-space
+	 * points (TL TR BR BL), bypassing x/y/ox/oy/zoom/angle. */
+	void setCorners(const Vec2 (&pts)[4]);
+	void clearCorners();
+
 	void initDynAttribs();
 
 private:
