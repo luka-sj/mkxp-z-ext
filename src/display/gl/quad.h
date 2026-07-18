@@ -49,6 +49,16 @@ struct Quad
 	}
 
 	template<typename V>
+	static void setPosQuad(V *vert, const Vec2 (&p)[4])
+	{
+		int i = 0;
+		vert[i++].pos = p[0]; /* TL */
+		vert[i++].pos = p[1]; /* TR */
+		vert[i++].pos = p[2]; /* BR */
+		vert[i++].pos = p[3]; /* BL */
+	}
+
+	template<typename V>
 	static void setTexRect(V *vert, const FloatRect &r)
 	{
 		int i = 0;
@@ -105,6 +115,12 @@ struct Quad
 	void setPosRect(const FloatRect &r)
 	{
 		setPosRect(vert, r);
+		vboDirty = true;
+	}
+
+	void setPosQuad(const Vec2 (&p)[4])
+	{
+		setPosQuad(vert, p);
 		vboDirty = true;
 	}
 
