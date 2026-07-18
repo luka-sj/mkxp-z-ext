@@ -148,11 +148,26 @@ static void insertAfterDirectives(std::string &src, const std::string &inject)
 }
 
 CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
-                                   const char *fragName)
+                                   const char *fragName,
+                                   const char *vertContents, int vertSize,
+                                   const char *vertName)
 {
-	// Compile vertex shader with error handling
-	const GLchar *vertSources[1] = { simpleVert };
-	GLint vertLengths[1] = { (GLint)strlen(simpleVert) };
+	// Compile vertex shader with error handling. A user vertex source (from the
+	// sibling .vert file) replaces the built-in simpleVert when present, and
+	// gets the same common.h precision-header injection as fragment sources.
+	std::string vertSrc;
+	if (vertContents)
+	{
+		vertSrc.assign(vertContents, vertSize);
+		insertAfterDirectives(vertSrc, Shader::commonHeaderSource(false));
+	}
+	else
+	{
+		vertSrc = simpleVert;
+	}
+
+	const GLchar *vertSources[1] = { vertSrc.c_str() };
+	GLint vertLengths[1] = { (GLint)vertSrc.size() };
 
 	gl.ShaderSource(vertShader, 1, vertSources, vertLengths);
 	gl.CompileShader(vertShader);
@@ -163,6 +178,10 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 	if (!success)
 	{
 		std::string log = getShaderLog(vertShader);
+		if (vertContents)
+			throw Exception(Exception::MKXPError,
+			                "Vertex shader compilation failed for '%s':\n%s",
+			                vertName, log.c_str());
 		throw Exception(Exception::MKXPError,
 		                "Internal vertex shader compilation failed for '%s':\n%s",
 		                fragName, log.c_str());
@@ -386,11 +405,26 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 }
 
 CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fragSize,
-                                               const char *fragName)
+                                               const char *fragName,
+                                               const char *vertContents, int vertSize,
+                                               const char *vertName)
 {
-	// Compile vertex shader with error handling
-	const GLchar *vertSources[1] = { spriteVert };
-	GLint vertLengths[1] = { (GLint)strlen(spriteVert) };
+	// Compile vertex shader with error handling. A user vertex source (from the
+	// sibling .vert file) replaces the built-in spriteVert when present, and
+	// gets the same common.h precision-header injection as fragment sources.
+	std::string vertSrc;
+	if (vertContents)
+	{
+		vertSrc.assign(vertContents, vertSize);
+		insertAfterDirectives(vertSrc, Shader::commonHeaderSource(false));
+	}
+	else
+	{
+		vertSrc = spriteVert;
+	}
+
+	const GLchar *vertSources[1] = { vertSrc.c_str() };
+	GLint vertLengths[1] = { (GLint)vertSrc.size() };
 
 	gl.ShaderSource(vertShader, 1, vertSources, vertLengths);
 	gl.CompileShader(vertShader);
@@ -401,6 +435,10 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 	if (!success)
 	{
 		std::string log = getShaderLog(vertShader);
+		if (vertContents)
+			throw Exception(Exception::MKXPError,
+			                "Vertex shader compilation failed for '%s':\n%s",
+			                vertName, log.c_str());
 		throw Exception(Exception::MKXPError,
 		                "Internal vertex shader compilation failed for '%s':\n%s",
 		                fragName, log.c_str());
@@ -671,12 +709,43 @@ CustomShader::CustomShader(const char *filename)
 		                "Failed to read shader file '%s'", filename);
 	}
 
+	// Look for a sibling vertex source: the same path with the extension
+	// replaced by ".vert" (e.g. "Foo.glsl" -> "Foo.vert"). Present -> it is
+	// compiled as the vertex stage for both impls; absent -> the built-in
+	// vertex shaders are used, unchanged. Probe/read it the same way the
+	// fragment source is (filesystem exists check + readFile).
+	std::string vertPath(filename);
+	size_t dot = vertPath.find_last_of('.');
+	size_t slash = vertPath.find_last_of("/\\");
+	if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+		vertPath.erase(dot);
+	vertPath += ".vert";
+
+	std::string vertContents;
+	bool haveVert = false;
+	if (shState->fileSystem().exists(vertPath.c_str()))
+	{
+		if (!readFile(vertPath.c_str(), vertContents))
+		{
+			delete p;
+			throw Exception(Exception::RGSSError,
+			                "Failed to read shader file '%s'", vertPath.c_str());
+		}
+		haveVert = true;
+	}
+
 	try
 	{
 		p->shader = new CustomShaderImpl(
-			fragContents.c_str(), fragContents.size(), filename);
+			fragContents.c_str(), fragContents.size(), filename,
+			haveVert ? vertContents.c_str() : 0,
+			haveVert ? (int)vertContents.size() : 0,
+			haveVert ? vertPath.c_str() : 0);
 		p->spriteShader = new CustomSpriteShaderImpl(
-			fragContents.c_str(), fragContents.size(), filename);
+			fragContents.c_str(), fragContents.size(), filename,
+			haveVert ? vertContents.c_str() : 0,
+			haveVert ? (int)vertContents.size() : 0,
+			haveVert ? vertPath.c_str() : 0);
 	}
 	catch (const Exception &e)
 	{
