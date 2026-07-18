@@ -70,7 +70,12 @@ struct SpritePrivate
     
     Quad quad;
     Transform trans;
-    
+
+    /* Model transform used while corners are active: carries the scene
+     * global offset only (no position/origin/zoom/rotation), so corner
+     * coordinates are viewport-space px. Kept in sync in onGeometryChange. */
+    Transform offsetTrans;
+
     FloatRect srcRect;
     FloatRect adjustedSrcRect;
     sigslot::connection srcRectCon;
@@ -122,7 +127,15 @@ struct SpritePrivate
         bool dirty;
         SimpleQuadArray qArray;
     } wave;
-    
+
+    struct
+    {
+        /* Corners set: quad positions are authoritative */
+        bool active;
+        /* Viewport-space px, TL TR BR BL */
+        Vec2 pts[4];
+    } corners;
+
     EtcTemps tmp;
     
     sigslot::connection prepareCon;
@@ -168,6 +181,8 @@ struct SpritePrivate
         wave.speed = 360;
         wave.phase = 0.0f;
         wave.dirty = false;
+
+        corners.active = false;
     }
     
     ~SpritePrivate()
@@ -404,9 +419,12 @@ struct SpritePrivate
             quad.setTexRect(mirrored ? rect.hFlipped() : rect);
         }
         
-        quad.setPosRect(FloatRect(0, 0, rect.w, rect.h));
+        /* While corners are active they own the quad positions; only the
+         * tex-rect update above applies (src_rect animation keeps working). */
+        if (!corners.active)
+            quad.setPosRect(FloatRect(0, 0, rect.w, rect.h));
         bushDirty = true;
-        
+
         if (wave.active)
             wave.dirty = true;
     }
@@ -436,7 +454,15 @@ struct SpritePrivate
         
         if (!opacity)
             return;
-        
+
+        if (corners.active)
+        {
+            /* Corners define an arbitrary quad; skip the axis-aligned
+             * bounding test (same opt-out as the zoom/rotation case). */
+            isVisible = true;
+            return;
+        }
+
         /* Compare sprite bounding box against the scene */
         
         /* If sprite is zoomed/rotated, just opt out for now
@@ -508,7 +534,14 @@ struct SpritePrivate
         
         if (nullOrDisposed(bitmap))
             return;
-        
+
+        /* Corners win over the wave effect while active */
+        if (corners.active)
+        {
+            wave.active = false;
+            return;
+        }
+
         if (wave.amp == 0)
         {
             wave.active = false;
@@ -924,6 +957,35 @@ void Sprite::setWavePhase(float value)
 	p->wave.dirty = true;
 }
 
+void Sprite::setCorners(const Vec2 (&pts)[4])
+{
+    guardDisposed();
+
+    for (int i = 0; i < 4; ++i)
+        p->corners.pts[i] = pts[i];
+
+    p->corners.active = true;
+    p->quad.setPosQuad(p->corners.pts);
+
+    /* Corners win over the wave effect while active */
+    p->wave.dirty = true;
+}
+
+void Sprite::clearCorners()
+{
+    guardDisposed();
+
+    if (!p->corners.active)
+        return;
+
+    p->corners.active = false;
+    /* Restore the normal local rect */
+    p->quad.setPosRect(FloatRect(0, 0, p->srcRect.w, p->srcRect.h));
+
+    /* Wave resumes naturally on its usual triggers */
+    p->wave.dirty = true;
+}
+
 void Sprite::initDynAttribs()
 {
     p->realSrcRect = new Rect;
@@ -959,6 +1021,12 @@ void Sprite::draw()
 
     ShaderBase *base;
 
+    /* While corners are active the model matrix carries the scene global
+     * offset only, so the quad's viewport-space corner coordinates map
+     * straight through (no position/origin/zoom/rotation). */
+    const float *spriteMat = p->corners.active ?
+        p->offsetTrans.getMatrix() : p->trans.getMatrix();
+
     // Check for custom shaders (both single and multiple)
     bool hasCustomShader = p->shader && !p->shader->isDisposed();
 
@@ -986,7 +1054,7 @@ void Sprite::draw()
             CustomSpriteShaderImpl *shader = customShader->getSpriteShader();
             shader->bind();
             shader->applyViewportProj();
-            shader->setSpriteMat(p->trans.getMatrix());
+            shader->setSpriteMat(spriteMat);
             shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
             shader->setTime(SDL_GetTicks() / 1000.0f);
             shader->setOpacity(p->opacity.norm);
@@ -1024,7 +1092,8 @@ void Sprite::draw()
             glState.blendMode.pushSet(p->blendType);
             p->bitmap->bindTex(*base, false);
 
-            if (p->wave.active)
+            /* Corners win over the wave effect while active */
+            if (p->wave.active && !p->corners.active)
                 p->wave.qArray.draw();
             else
                 p->quad.draw();
@@ -1105,7 +1174,7 @@ void Sprite::draw()
 
         shader.bind();
         shader.applyViewportProj();
-        shader.setSpriteMat(p->trans.getMatrix());
+        shader.setSpriteMat(spriteMat);
 
         shader.setTone(p->tone->norm);
         shader.setOpacity(p->opacity.norm);
@@ -1151,7 +1220,7 @@ void Sprite::draw()
         AlphaSpriteShader &shader = shState->shaders().alphaSprite;
         shader.bind();
 
-        shader.setSpriteMat(p->trans.getMatrix());
+        shader.setSpriteMat(spriteMat);
         shader.setAlpha(p->opacity.norm);
         shader.applyViewportProj();
         base = &shader;
@@ -1167,7 +1236,7 @@ void Sprite::draw()
 
             shader.setTexSize(Vec2i(sourceWidthHires, sourceHeightHires));
             shader.setSharpness(shState->config().bicubicSharpness);
-            shader.setSpriteMat(p->trans.getMatrix());
+            shader.setSpriteMat(spriteMat);
             shader.applyViewportProj();
             base = &shader;
         }
@@ -1178,7 +1247,7 @@ void Sprite::draw()
             shader.bind();
 
             shader.setTexSize(Vec2i(sourceWidthHires, sourceHeightHires));
-            shader.setSpriteMat(p->trans.getMatrix());
+            shader.setSpriteMat(spriteMat);
             shader.applyViewportProj();
             base = &shader;
         }
@@ -1191,7 +1260,7 @@ void Sprite::draw()
 
             shader.setTexSize(Vec2i(sourceWidthHires, sourceHeightHires));
             shader.setTargetScale(Vec2((float)(shState->config().xbrzScalingFactor), (float)(shState->config().xbrzScalingFactor)));
-            shader.setSpriteMat(p->trans.getMatrix());
+            shader.setSpriteMat(spriteMat);
             shader.applyViewportProj();
             base = &shader;
         }
@@ -1202,7 +1271,7 @@ void Sprite::draw()
             SimpleSpriteShader &shader = shState->shaders().simpleSprite;
             shader.bind();
 
-            shader.setSpriteMat(p->trans.getMatrix());
+            shader.setSpriteMat(spriteMat);
             shader.applyViewportProj();
             base = &shader;
         }
@@ -1223,7 +1292,8 @@ void Sprite::draw()
 
     TEX::setSmooth(scalingMethod == Bilinear);
 
-    if (p->wave.active)
+    /* Corners win over the wave effect while active */
+    if (p->wave.active && !p->corners.active)
         p->wave.qArray.draw();
     else
         p->quad.draw();
@@ -1241,7 +1311,10 @@ void Sprite::onGeometryChange(const Scene::Geometry &geo)
     if (p->wave.active && p->trans.getGlobalOffset().y != offset.y)
         p->wave.dirty = true;
     p->trans.setGlobalOffset(offset);
-    
+    /* offsetTrans mirrors only the global offset (identity model otherwise),
+     * so cornered sprites render in viewport-space px. */
+    p->offsetTrans.setGlobalOffset(offset);
+
     p->sceneGeo = geo;
     p->viewport = getViewport();
 }
