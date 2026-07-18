@@ -58,7 +58,9 @@ class CustomShaderImpl : public ShaderBase
 {
 public:
 	CustomShaderImpl(const char *fragContents, int fragSize,
-	                 const char *fragName);
+	                 const char *fragName,
+	                 const char *vertContents = 0, int vertSize = 0,
+	                 const char *vertName = 0);
 	virtual ~CustomShaderImpl() {}
 
 	void setTime(float value);
@@ -74,7 +76,9 @@ class CustomSpriteShaderImpl : public ShaderBase
 {
 public:
 	CustomSpriteShaderImpl(const char *fragContents, int fragSize,
-	                       const char *fragName);
+	                       const char *fragName,
+	                       const char *vertContents = 0, int vertSize = 0,
+	                       const char *vertName = 0);
 	virtual ~CustomSpriteShaderImpl() {}
 
 	void setSpriteMat(const float value[16]);
