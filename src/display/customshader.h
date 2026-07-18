@@ -36,7 +36,8 @@ enum UniformType {
 	UNIFORM_INT,
 	UNIFORM_VEC2,
 	UNIFORM_VEC3,
-	UNIFORM_VEC4
+	UNIFORM_VEC4,
+	UNIFORM_MAT4
 };
 
 struct UniformValue {
@@ -47,6 +48,7 @@ struct UniformValue {
 		float vec2[2];
 		float vec3[3];
 		float vec4[4];
+		float mat4[16];
 	} data;
 };
 
@@ -137,6 +139,7 @@ public:
 	void setVec2(const char *name, float x, float y);
 	void setVec3(const char *name, float x, float y, float z);
 	void setVec4(const char *name, float x, float y, float z, float w);
+	void setMat4(const char *name, const float value[16]);
 	void setBitmap(const char *name, Bitmap *bitmap);
 
 	// Get the uniform map for applying to shaders
