@@ -266,6 +266,9 @@ void CustomShaderImpl::applyUniforms(const UniformMap &uniforms)
 		case UNIFORM_VEC4:
 			gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]);
 			break;
+		case UNIFORM_MAT4:
+			gl.UniformMatrix4fv(loc, 1, GL_FALSE, val.data.mat4);
+			break;
 		}
 	}
 }
@@ -634,6 +637,9 @@ void CustomSpriteShaderImpl::applyUniforms(const UniformMap &uniforms)
 		case UNIFORM_VEC4:
 			gl.Uniform4f(loc, val.data.vec4[0], val.data.vec4[1], val.data.vec4[2], val.data.vec4[3]);
 			break;
+		case UNIFORM_MAT4:
+			gl.UniformMatrix4fv(loc, 1, GL_FALSE, val.data.mat4);
+			break;
 		}
 	}
 }
@@ -825,6 +831,15 @@ void CustomShader::setVec4(const char *name, float x, float y, float z, float w)
 	val.data.vec4[1] = y;
 	val.data.vec4[2] = z;
 	val.data.vec4[3] = w;
+	p->uniforms[name] = val;
+}
+
+void CustomShader::setMat4(const char *name, const float value[16])
+{
+	guardDisposed();
+	UniformValue val;
+	val.type = UNIFORM_MAT4;
+	memcpy(val.data.mat4, value, sizeof(val.data.mat4));
 	p->uniforms[name] = val;
 }
 

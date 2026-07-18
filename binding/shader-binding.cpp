@@ -134,6 +134,38 @@ RB_METHOD_GUARD(shaderSetVec4) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(shaderSetMat4) {
+    const char *name;
+    VALUE arg;
+    rb_get_args(argc, argv, "zo", &name, &arg RB_ARG_END);
+
+    if (!RB_TYPE_P(arg, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array for mat4");
+
+    if (RARRAY_LEN(arg) != 16)
+        rb_raise(rb_eArgError, "set_mat4 expects a 16-element Array (column-major mat4)");
+
+    float mat[16];
+    for (int i = 0; i < 16; ++i)
+    {
+        VALUE v = rb_ary_entry(arg, i);
+
+        if (!rb_obj_is_kind_of(v, rb_cNumeric))
+            rb_raise(rb_eTypeError, "mat4 elements must be Numeric");
+
+        mat[i] = (float) NUM2DBL(v);
+    }
+
+    CustomShader *s = getPrivateData<CustomShader>(self);
+
+    GFX_LOCK;
+    s->setMat4(name, mat);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
 RB_METHOD_GUARD(shaderSetBitmap) {
     const char *name;
     VALUE bitmapObj;
@@ -173,5 +205,6 @@ void shaderBindingInit() {
     _rb_define_method(klass, "set_vec2", shaderSetVec2);
     _rb_define_method(klass, "set_vec3", shaderSetVec3);
     _rb_define_method(klass, "set_vec4", shaderSetVec4);
+    _rb_define_method(klass, "set_mat4", shaderSetMat4);
     _rb_define_method(klass, "set_bitmap", shaderSetBitmap);
 }
