@@ -163,6 +163,52 @@ RB_METHOD_GUARD(spriteSetShaders) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD(spriteGetCorners) {
+    RB_UNUSED_PARAM;
+
+    /* Return the stored Ruby array directly (nil when not set) */
+    return rb_iv_get(self, "@corners");
+}
+
+RB_METHOD_GUARD(spriteSetCorners) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE arg;
+    rb_get_args(argc, argv, "o", &arg RB_ARG_END);
+
+    /* nil clears corner geometry, restoring normal rect rendering */
+    if (NIL_P(arg)) {
+        GFX_GUARD_EXC(s->clearCorners();)
+        rb_iv_set(self, "@corners", Qnil);
+        return Qnil;
+    }
+
+    if (!RB_TYPE_P(arg, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array or nil for corners");
+
+    if (RARRAY_LEN(arg) != 8)
+        rb_raise(rb_eArgError, "corners expects an 8-element Array [x1,y1,x2,y2,x3,y3,x4,y4]");
+
+    Vec2 pts[4];
+    for (int i = 0; i < 4; ++i) {
+        VALUE xv = rb_ary_entry(arg, i * 2);
+        VALUE yv = rb_ary_entry(arg, i * 2 + 1);
+
+        if (!rb_obj_is_kind_of(xv, rb_cNumeric) || !rb_obj_is_kind_of(yv, rb_cNumeric))
+            rb_raise(rb_eTypeError, "corners elements must be Numeric");
+
+        pts[i] = Vec2((float) NUM2DBL(xv), (float) NUM2DBL(yv));
+    }
+
+    GFX_GUARD_EXC(s->setCorners(pts);)
+
+    /* Stash a defensive copy for the reader */
+    rb_iv_set(self, "@corners", rb_ary_dup(arg));
+
+    return arg;
+}
+RB_METHOD_GUARD_END
+
 void spriteBindingInit() {
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
@@ -217,4 +263,7 @@ void spriteBindingInit() {
 
     _rb_define_method(klass, "shaders", spriteGetShaders);
     _rb_define_method(klass, "shaders=", spriteSetShaders);
+
+    _rb_define_method(klass, "corners", spriteGetCorners);
+    _rb_define_method(klass, "corners=", spriteSetCorners);
 }
