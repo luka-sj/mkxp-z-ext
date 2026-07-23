@@ -112,7 +112,7 @@ static void printProgramLog(GLuint program)
 	std::clog << "Program log:\n" << log;
 }
 
-Shader::Shader() : initialized(false)
+Shader::Shader() : initialized(false), ownsProgram(true)
 {
 #ifdef MKXPZ_BUILD_XCODE
     if (Shader::shaderCommon.empty())
@@ -126,7 +126,9 @@ Shader::Shader() : initialized(false)
 
 Shader::~Shader()
 {
-	gl.DeleteProgram(program);
+
+	if (ownsProgram)
+		gl.DeleteProgram(program);
 	gl.DeleteShader(vertShader);
 	gl.DeleteShader(fragShader);
 }

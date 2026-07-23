@@ -106,6 +106,8 @@ public:
 	void setStdColor(const Vec4 &value);
 
 private:
+	void finishUniformLookups();
+
 	GLint u_spriteMat;
 	GLint u_time;
 	GLint u_opacity;
