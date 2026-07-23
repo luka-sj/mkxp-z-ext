@@ -22,9 +22,9 @@ uchardet = dependency('uchardet', static: build_static)
 # building the sub project.
 # It looks like upstream SDL_image fixed this for SDL3, so we can hopefully
 # remove this workaround after eventually upgrading to SDL3.
-sdl2_image = dependency('SDL2_image', modules: ['SDL2_image::SDL2_image-static', 'SDL2_image::brotlidec-static', 'SDL2_image::brotlicommon-static', 'SDL2_image::hwy', 'SDL2_image::jxl_dec-static'], static: build_static, method: 'cmake', required: false)
+sdl2_image = dependency('SDL2_image', modules: ['SDL2_image::SDL2_image-static'], static: build_static, method: 'cmake', required: false)
 if sdl2_image.found() == false
-    sdl2_image = dependency('SDL2_image', modules: ['SDL2_image::SDL2_image-static', 'SDL2_image::brotlidec-static', 'SDL2_image::brotlicommon-static', 'SDL2_image::hwy', 'SDL2_image::jxl_dec-static'], static: build_static)
+    sdl2_image = dependency('SDL2_image', modules: ['SDL2_image::SDL2_image-static'], static: build_static)
 endif
 
 if host_system == 'windows'
