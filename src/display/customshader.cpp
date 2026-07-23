@@ -30,6 +30,56 @@
 #include "display/bitmap.h"
 #include <string>
 #include <cstring>
+#include <unordered_map>
+#include <utility>
+
+/*
+ * Program cache for custom shaders.
+ */
+namespace {
+	using ProgramKey = std::pair<std::string, std::string>; // (vertSrc, fragSrc)
+
+	struct ProgramKeyHash {
+		size_t operator()(const ProgramKey &k) const {
+			return std::hash<std::string>()(k.first) ^
+			      (std::hash<std::string>()(k.second) << 1);
+		}
+	};
+
+	typedef std::unordered_map<ProgramKey, GLuint, ProgramKeyHash> ProgramCache;
+
+	static ProgramCache &programCache()
+	{
+		static ProgramCache c;
+		return c;
+	}
+
+	/* Returns 0 (never a valid GL program name) on cache miss. */
+	static GLuint findCachedProgram(const std::string &vertSrc,
+	                                const std::string &fragSrc)
+	{
+		ProgramCache &c = programCache();
+		ProgramCache::iterator it = c.find(ProgramKey(vertSrc, fragSrc));
+		return (it == c.end()) ? 0u : it->second;
+	}
+
+	static void insertCachedProgram(const std::string &vertSrc,
+	                                const std::string &fragSrc,
+	                                GLuint program)
+	{
+		programCache()[ProgramKey(vertSrc, fragSrc)] = program;
+	}
+}
+
+#define ADOPT_CACHED_PROGRAM(cached_) do { \
+	gl.DeleteProgram(program); \
+	gl.DeleteShader(vertShader); \
+	gl.DeleteShader(fragShader); \
+	vertShader = 0; \
+	fragShader = 0; \
+	program = (cached_); \
+	ownsProgram = false; \
+} while (0)
 
 // Helper function to get shader compilation log
 static std::string getShaderLog(GLuint shader)
@@ -152,9 +202,9 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
                                    const char *vertContents, int vertSize,
                                    const char *vertName)
 {
-	// Compile vertex shader with error handling. A user vertex source (from the
-	// sibling .vert file) replaces the built-in simpleVert when present, and
-	// gets the same common.h precision-header injection as fragment sources.
+	// Build the final vertex source. A user vertex source (from the sibling
+	// .vert file) replaces the built-in simpleVert when present, and gets
+	// the same common.h precision-header injection as fragment sources.
 	std::string vertSrc;
 	if (vertContents)
 	{
@@ -166,6 +216,24 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 		vertSrc = simpleVert;
 	}
 
+	// Build the final fragment source. Inject the GLES/desktop precision
+	// header (common.h) so custom shaders compile on OpenGL ES (no default
+	// float precision otherwise).
+	std::string fragSrc(fragContents, fragSize);
+	insertAfterDirectives(fragSrc, Shader::commonHeaderSource(true));
+
+	// Cache lookup — a link is a pure function of (vertSrc, fragSrc) plus
+	// the fixed attribute bindings we always apply.
+	GLuint cached = findCachedProgram(vertSrc, fragSrc);
+	if (cached != 0)
+	{
+		ADOPT_CACHED_PROGRAM(cached);
+		ShaderBase::init();
+		u_time = gl.GetUniformLocation(program, "time");
+		return;
+	}
+
+	// Cache miss — compile + link on our own handles.
 	const GLchar *vertSources[1] = { vertSrc.c_str() };
 	GLint vertLengths[1] = { (GLint)vertSrc.size() };
 
@@ -186,12 +254,6 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 		                "Internal vertex shader compilation failed for '%s':\n%s",
 		                fragName, log.c_str());
 	}
-
-	// Compile fragment shader with error handling. Inject the GLES/desktop
-	// precision header (common.h) the built-in shaders get, so custom
-	// shaders compile on OpenGL ES (no default float precision otherwise).
-	std::string fragSrc(fragContents, fragSize);
-	insertAfterDirectives(fragSrc, Shader::commonHeaderSource(true));
 
 	const GLchar *fragSources[1] = { fragSrc.c_str() };
 	GLint fragLengths[1] = { (GLint)fragSrc.size() };
@@ -228,6 +290,9 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 		                "Shader program linking failed for '%s':\n%s",
 		                fragName, log.c_str());
 	}
+
+	insertCachedProgram(vertSrc, fragSrc, program);
+	ownsProgram = false;
 
 	ShaderBase::init();
 
@@ -412,9 +477,9 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
                                                const char *vertContents, int vertSize,
                                                const char *vertName)
 {
-	// Compile vertex shader with error handling. A user vertex source (from the
-	// sibling .vert file) replaces the built-in spriteVert when present, and
-	// gets the same common.h precision-header injection as fragment sources.
+	// Build the final vertex source. A user vertex source (from the sibling
+	// .vert file) replaces the built-in spriteVert when present, and gets
+	// the same common.h precision-header injection as fragment sources.
 	std::string vertSrc;
 	if (vertContents)
 	{
@@ -426,6 +491,38 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		vertSrc = spriteVert;
 	}
 
+	// Try the wrapped fragment source first
+	std::string wrappedSrc = buildWrappedFragSource(fragContents, fragSize);
+
+	// Cache lookup on the wrapped variant
+	if (!wrappedSrc.empty())
+	{
+		GLuint cachedWrapped = findCachedProgram(vertSrc, wrappedSrc);
+		if (cachedWrapped != 0)
+		{
+			ADOPT_CACHED_PROGRAM(cachedWrapped);
+			finishUniformLookups();
+			return;
+		}
+	}
+
+	// Prepare fallback source
+	std::string fallbackSrc(fragContents, fragSize);
+	insertAfterDirectives(fallbackSrc, Shader::commonHeaderSource(true));
+
+	if (wrappedSrc.empty())
+	{
+		Debug() << "CustomShader [" << fragName << "]: buildWrappedFragSource failed (main not found)";
+		GLuint cachedFallback = findCachedProgram(vertSrc, fallbackSrc);
+		if (cachedFallback != 0)
+		{
+			ADOPT_CACHED_PROGRAM(cachedFallback);
+			finishUniformLookups();
+			return;
+		}
+	}
+
+	// Cache miss — compile + link on our own handles.
 	const GLchar *vertSources[1] = { vertSrc.c_str() };
 	GLint vertLengths[1] = { (GLint)vertSrc.size() };
 
@@ -447,10 +544,11 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		                fragName, log.c_str());
 	}
 
-	// Try to build a wrapped fragment shader with tone/color support.
-	// If wrapping fails, compile the original shader without tone/color.
-	std::string wrappedSrc = buildWrappedFragSource(fragContents, fragSize);
+	// Try wrapping first, fall back on compile failure. The FINAL source
+	// that succeeds is what we cache with — never the source that failed
+	// to compile.
 	bool wrapped = false;
+	std::string compiledFragSrc;
 
 	if (!wrappedSrc.empty())
 	{
@@ -474,24 +572,25 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		else
 		{
 			Debug() << "CustomShader [" << fragName << "]: Wrapped shader compiled OK";
+			compiledFragSrc = wrappedSrc;
 		}
-	}
-	else
-	{
-		Debug() << "CustomShader [" << fragName << "]: buildWrappedFragSource failed (main not found)";
 	}
 
 	if (!wrapped)
 	{
 		Debug() << "CustomShader [" << fragName << "]: Falling back to unwrapped shader (no built-in effects)";
 
-		// Fallback: compile original shader without wrapping, but still
-		// inject the precision header so it compiles on GLES.
-		std::string fragSrc(fragContents, fragSize);
-		insertAfterDirectives(fragSrc, Shader::commonHeaderSource(true));
+		// Fallback path — but check the fallback cache one more time
+		GLuint cachedFallback = findCachedProgram(vertSrc, fallbackSrc);
+		if (cachedFallback != 0)
+		{
+			ADOPT_CACHED_PROGRAM(cachedFallback);
+			finishUniformLookups();
+			return;
+		}
 
-		const GLchar *fragSources[1] = { fragSrc.c_str() };
-		GLint fragLengths[1] = { (GLint)fragSrc.size() };
+		const GLchar *fragSources[1] = { fallbackSrc.c_str() };
+		GLint fragLengths[1] = { (GLint)fallbackSrc.size() };
 
 		gl.ShaderSource(fragShader, 1, fragSources, fragLengths);
 		gl.CompileShader(fragShader);
@@ -505,6 +604,8 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 			                "Shader compilation failed for '%s':\n%s",
 			                fragName, log.c_str());
 		}
+
+		compiledFragSrc = fallbackSrc;
 	}
 
 	// Link program with error handling
@@ -527,6 +628,14 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 		                fragName, log.c_str());
 	}
 
+	insertCachedProgram(vertSrc, compiledFragSrc, program);
+	ownsProgram = false;
+
+	finishUniformLookups();
+}
+
+void CustomSpriteShaderImpl::finishUniformLookups()
+{
 	ShaderBase::init();
 
 	u_spriteMat = gl.GetUniformLocation(program, "spriteMat");

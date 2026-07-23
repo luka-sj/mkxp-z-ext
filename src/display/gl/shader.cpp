@@ -96,7 +96,7 @@ static void printProgramLog(GLuint program)
 	std::clog << "Program log:\n" << log;
 }
 
-Shader::Shader() : initialized(false)
+Shader::Shader() : initialized(false), ownsProgram(true)
 {
 	vertShader = gl.CreateShader(GL_VERTEX_SHADER);
 	fragShader = gl.CreateShader(GL_FRAGMENT_SHADER);
@@ -106,7 +106,9 @@ Shader::Shader() : initialized(false)
 
 Shader::~Shader()
 {
-	gl.DeleteProgram(program);
+
+	if (ownsProgram)
+		gl.DeleteProgram(program);
 	gl.DeleteShader(vertShader);
 	gl.DeleteShader(fragShader);
 }
