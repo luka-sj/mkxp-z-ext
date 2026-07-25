@@ -38,7 +38,14 @@ static std::string convertString(std::string &str, const char *charset) {
     }
     
     iconv_t cd = iconv_open("UTF-8", charset);
-    
+
+    // iconv_open returns (iconv_t)-1 when it doesn't recognise the charset.
+    // uchardet can guess names this iconv build rejects, so fall back to
+    // treating the input as UTF-8 rather than feeding -1 to iconv (which
+    // dereferences it as a conversion descriptor and segfaults).
+    if (cd == (iconv_t)-1)
+        return std::string(str);
+
     size_t inLen = str.size();
     size_t outLen = inLen * 4;
     std::string buf(outLen, '\0');
