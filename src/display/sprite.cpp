@@ -82,7 +82,6 @@ struct SpritePrivate
     
     bool mirrored;
     int bushDepth;
-    float efBushDepth;
     float bushSlope;
     float bushIntercept;
     bool bushY;
@@ -1061,7 +1060,7 @@ void Sprite::draw()
             shader->setTone(p->tone->norm);
             shader->setColor(*blend);
             shader->setInvert(p->invert);
-            shader->setBushDepth(p->efBushDepth);
+            shader->setBushDepth(p->bushY, p->bushUnder, p->bushSlope, p->bushIntercept);
             shader->setBushOpacity(p->bushOpacity.norm);
 
             /* If the user's shader declares standard uniform names

@@ -381,8 +381,9 @@ static const char *spriteFragSuffix =
 	"    if (_mkxp_invert) {\n"
 	"        _mkxp_frag.rgb = vec3(1.0) - _mkxp_frag.rgb;\n"
 	"    }\n"
-	"    lowp float _mkxp_underBush = float(v_texCoord.y < _mkxp_bushDepth);\n"
-	"    _mkxp_frag.a *= clamp(_mkxp_bushOpacity + _mkxp_underBush, 0.0, 1.0);\n"
+    "    bool _mkxp_underBush = (float(_mkxp_bushY) * v_texCoord.y + float(!_mkxp_bushY) * v_texCoord.x) <\n"
+	"                           (_mkxp_bushSlope * (float(_mkxp_bushY) * v_texCoord.x + float(!_mkxp_bushY) * v_texCoord.y) + _mkxp_bushIntercept);\n"
+	"    _mkxp_frag.a *= clamp(_mkxp_bushOpacity + float(_mkxp_underBush == _mkxp_bushUnder), 0.0, 1.0);\n"
 	"    gl_FragColor = _mkxp_frag;\n"
 	"}\n";
 
@@ -463,7 +464,10 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 		"uniform lowp float _mkxp_opacity;\n"
 		"uniform lowp vec4 _mkxp_color;\n"
 		"uniform bool _mkxp_invert;\n"
-		"uniform lowp float _mkxp_bushDepth;\n"
+		"uniform bool _mkxp_bushY;\n"
+		"uniform bool _mkxp_bushUnder;\n"
+		"uniform float _mkxp_bushSlope;\n"
+		"uniform float _mkxp_bushIntercept;\n"
 		"uniform lowp float _mkxp_bushOpacity;\n";
 
 	// Insert after any #version / #extension directives, which must come first.
@@ -648,7 +652,10 @@ void CustomSpriteShaderImpl::finishUniformLookups()
 	u_tone = gl.GetUniformLocation(program, "_mkxp_tone");
 	u_color = gl.GetUniformLocation(program, "_mkxp_color");
 	u_invert = gl.GetUniformLocation(program, "_mkxp_invert");
-	u_bushDepth = gl.GetUniformLocation(program, "_mkxp_bushDepth");
+	u_bushY = gl.GetUniformLocation(program, "_mkxp_bushY");
+	u_bushUnder = gl.GetUniformLocation(program, "_mkxp_bushUnder");
+	u_bushSlope = gl.GetUniformLocation(program, "_mkxp_bushSlope");
+	u_bushIntercept = gl.GetUniformLocation(program, "_mkxp_bushIntercept");
 	u_bushOpacity = gl.GetUniformLocation(program, "_mkxp_bushOpacity");
 
 	/* Look up standard uniform names that the user's shader may declare.
@@ -694,10 +701,17 @@ void CustomSpriteShaderImpl::setInvert(bool value)
 		gl.Uniform1i(u_invert, value ? 1 : 0);
 }
 
-void CustomSpriteShaderImpl::setBushDepth(float value)
+void CustomSpriteShaderImpl::setBushDepth(bool bushY, bool bushUnder,
+                                          float bushSlope, float bushIntercept)
 {
-	if (u_bushDepth >= 0)
-		gl.Uniform1f(u_bushDepth, value);
+	if (u_bushY >= 0)
+		gl.Uniform1f(u_bushY, bushY);
+	if (u_bushUnder >= 0)
+		gl.Uniform1f(u_bushUnder, bushUnder);
+	if (u_bushSlope >= 0)
+		gl.Uniform1f(u_bushSlope, bushSlope);
+	if (u_bushIntercept >= 0)
+		gl.Uniform1f(u_bushIntercept, bushIntercept);
 }
 
 void CustomSpriteShaderImpl::setBushOpacity(float value)
