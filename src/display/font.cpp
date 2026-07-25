@@ -145,6 +145,7 @@ struct SharedFontStatePrivate
      * empty/invalid family is requested */
     std::string defaultFamily;
 
+	int fontSizeMethod;
 	float fontScale;
 	bool fontKerning;
 	int fontHinting;
@@ -169,10 +170,21 @@ SharedFontState::SharedFontState(const Config &conf)
 		p->subs.insert(from, to);
 	}
 	
+	p->fontSizeMethod = conf.fontSizeMethod;
+	if (!p->fontSizeMethod)
+	{
+		if (rgssVer == 1)
+			p->fontSizeMethod = 1;
+		else
+			p->fontSizeMethod = 2;
+	}
 	p->fontScale = conf.fontScale;
 	if (p->fontScale < 0.1f)
 	{
-		p->fontScale = 1.0f;
+		if (p->fontSizeMethod == 1)
+			p->fontScale = 0.9f;
+		else
+			p->fontScale = 1.0f;
 	}
 	p->fontKerning = conf.fontKerning;
 	p->fontHinting = conf.fontHinting;
@@ -603,6 +615,25 @@ _TTF_Font *SharedFontState::getFont(std::string family,
 		}
 	}
 
+	/* Pokemon Essentials games were made with the old font size method in mind,
+	 * so we default to it for all XP games. */
+	if (p->fontSizeMethod == 1)
+	{
+		if (ppem == 0)
+		{
+			ppem = std::max<int>(size * p->fontScale, 5);
+			ppemMult = std::max<int>(ppem * hiresMult, 1);
+		}
+		font = TTF_OpenFontRW(ops, 1, ppemMult);
+
+		if (font)
+		{
+			/* RGSS doesn't use font hinting */
+			TTF_SetFontHinting(font, p->fontHinting);
+		}
+	}
+	else
+	{
 	/* Try to compute the size the same way Windows does. */
 	font = TTF_OpenFontRW(ops, 1, 0);
 
@@ -649,7 +680,8 @@ _TTF_Font *SharedFontState::getFont(std::string family,
 			TTF_SetFontHinting(font, p->fontHinting);
 		}
 	}
-	
+	} /* end fontSizeMethod == 2 */
+
 	if (!font)
 	{
 		p->size_to_ppem.remove(key);
