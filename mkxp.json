@@ -431,7 +431,8 @@
     // Scales the sizes of all fonts.
     // If you think text tends to be too large or too small,
     // try fiddling with this.
-    // (default: 1.0)
+    // For legacy reasons, this defaults to 0.9 when fontSizeMethod is set to 1.
+    // (default: 0.9 with fontSizeMethod 1, 1.0 otherwise)
     // "fontScale": 1.0,
 
     // Kerning adjusts the spacing between individual letters or characters.

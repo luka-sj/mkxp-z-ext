@@ -22,6 +22,8 @@
 #ifndef SPRITE_H
 #define SPRITE_H
 
+#include <vector>
+
 #include "scene.h"
 #include "flashable.h"
 #include "disposable.h"
@@ -75,6 +77,13 @@ public:
 	DECL_ATTR( WaveLength,  int     )
 	DECL_ATTR( WaveSpeed,   int     )
 	DECL_ATTR( WavePhase,   float   )
+	DECL_ATTR( Shader,      class CustomShader* )
+	DECL_ATTR( Shaders,     std::vector<class CustomShader*>& )
+
+	/* Corner geometry: place the rendered quad at four viewport-space
+	 * points (TL TR BR BL), bypassing x/y/ox/oy/zoom/angle. */
+	void setCorners(const Vec2 (&pts)[4]);
+	void clearCorners();
 
 	void initDynAttribs();
 

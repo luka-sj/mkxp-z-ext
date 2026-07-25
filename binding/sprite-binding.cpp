@@ -27,6 +27,7 @@
 #include "sharedstate.h"
 #include "sprite.h"
 #include "viewportelement-binding.h"
+#include "display/customshader.h"
 
 #if RAPI_FULL > 187
 DEF_TYPE(Sprite);
@@ -53,6 +54,7 @@ RB_METHOD(spriteInitialize) {
 
 DEF_GFX_PROP_OBJ_REF(Sprite, Bitmap, Bitmap, "bitmap")
 DEF_GFX_PROP_OBJ_REF(Sprite, Bitmap, Pattern, "pattern")
+DEF_GFX_PROP_OBJ_REF(Sprite, CustomShader, Shader, "@shader")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Rect, SrcRect, "src_rect")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Color, Color, "color")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Tone, Tone, "tone")
@@ -108,6 +110,105 @@ RB_METHOD_GUARD(spriteHeight) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD(spriteGetShaders) {
+    RB_UNUSED_PARAM;
+
+    /* Return the stored Ruby array directly */
+    VALUE ary = rb_iv_get(self, "@shaders");
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
+    }
+    return ary;
+}
+
+RB_METHOD_GUARD(spriteSetShaders) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE ary;
+    rb_get_args(argc, argv, "o", &ary RB_ARG_END);
+
+    std::vector<CustomShader*>& shaders = s->getShaders();
+    shaders.clear();
+
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
+        return ary;
+    }
+
+    if (!RB_TYPE_P(ary, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array for shaders");
+
+    /* Store the Ruby array */
+    rb_iv_set(self, "@shaders", ary);
+
+    /* Sync to C++ vector */
+    long len = RARRAY_LEN(ary);
+    for (long i = 0; i < len; ++i) {
+        VALUE elem = rb_ary_entry(ary, i);
+        if (NIL_P(elem)) {
+            shaders.push_back(0);
+        } else {
+#if RAPI_FULL > 187
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, CustomShaderType);
+#else
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, "Shader");
+#endif
+            shaders.push_back(shader);
+        }
+    }
+
+    return ary;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD(spriteGetCorners) {
+    RB_UNUSED_PARAM;
+
+    /* Return the stored Ruby array directly (nil when not set) */
+    return rb_iv_get(self, "@corners");
+}
+
+RB_METHOD_GUARD(spriteSetCorners) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE arg;
+    rb_get_args(argc, argv, "o", &arg RB_ARG_END);
+
+    /* nil clears corner geometry, restoring normal rect rendering */
+    if (NIL_P(arg)) {
+        GFX_GUARD_EXC(s->clearCorners();)
+        rb_iv_set(self, "@corners", Qnil);
+        return Qnil;
+    }
+
+    if (!RB_TYPE_P(arg, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array or nil for corners");
+
+    if (RARRAY_LEN(arg) != 8)
+        rb_raise(rb_eArgError, "corners expects an 8-element Array [x1,y1,x2,y2,x3,y3,x4,y4]");
+
+    Vec2 pts[4];
+    for (int i = 0; i < 4; ++i) {
+        VALUE xv = rb_ary_entry(arg, i * 2);
+        VALUE yv = rb_ary_entry(arg, i * 2 + 1);
+
+        if (!rb_obj_is_kind_of(xv, rb_cNumeric) || !rb_obj_is_kind_of(yv, rb_cNumeric))
+            rb_raise(rb_eTypeError, "corners elements must be Numeric");
+
+        pts[i] = Vec2((float) NUM2DBL(xv), (float) NUM2DBL(yv));
+    }
+
+    GFX_GUARD_EXC(s->setCorners(pts);)
+
+    /* Stash a defensive copy for the reader */
+    rb_iv_set(self, "@corners", rb_ary_dup(arg));
+
+    return arg;
+}
+RB_METHOD_GUARD_END
+
 void spriteBindingInit() {
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
@@ -157,4 +258,12 @@ void spriteBindingInit() {
     INIT_PROP_BIND(Sprite, WaveLength, "wave_length");
     INIT_PROP_BIND(Sprite, WaveSpeed, "wave_speed");
     INIT_PROP_BIND(Sprite, WavePhase, "wave_phase");
+
+    INIT_PROP_BIND(Sprite, Shader, "shader");
+
+    _rb_define_method(klass, "shaders", spriteGetShaders);
+    _rb_define_method(klass, "shaders=", spriteSetShaders);
+
+    _rb_define_method(klass, "corners", spriteGetCorners);
+    _rb_define_method(klass, "corners=", spriteSetCorners);
 }

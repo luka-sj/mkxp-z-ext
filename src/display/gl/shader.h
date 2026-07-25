@@ -40,8 +40,14 @@ public:
 		TexCoord = 1,
 		Color = 2
 	};
-    
+
     static std::string &commonHeader();
+
+    /* Builds the precision preamble (the GLSLES/FRAGMENT_SHADER #define
+     * guards plus common.h) that setupShaderSource prepends to built-in
+     * shaders. Exposed for custom shaders, which are compiled standalone
+     * and must inject the same header for GLES float-precision. */
+    static std::string commonHeaderSource(bool fragmentShader);
 
 protected:
 	Shader();
@@ -61,7 +67,8 @@ protected:
 	GLuint vertShader, fragShader;
 	GLuint program;
 	bool initialized;
-    
+	bool ownsProgram;
+
 private:
 #ifdef MKXPZ_BUILD_XCODE
     static std::string shaderCommon;

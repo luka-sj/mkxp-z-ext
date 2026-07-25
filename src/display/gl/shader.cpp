@@ -112,7 +112,7 @@ static void printProgramLog(GLuint program)
 	std::clog << "Program log:\n" << log;
 }
 
-Shader::Shader() : initialized(false)
+Shader::Shader() : initialized(false), ownsProgram(true)
 {
 #ifdef MKXPZ_BUILD_XCODE
     if (Shader::shaderCommon.empty())
@@ -126,7 +126,9 @@ Shader::Shader() : initialized(false)
 
 Shader::~Shader()
 {
-	gl.DeleteProgram(program);
+
+	if (ownsProgram)
+		gl.DeleteProgram(program);
 	gl.DeleteShader(vertShader);
 	gl.DeleteShader(fragShader);
 }
@@ -147,6 +149,25 @@ std::string &Shader::commonHeader() {
     return Shader::shaderCommon;
 }
 #endif
+
+std::string Shader::commonHeaderSource(bool fragmentShader)
+{
+	std::string src;
+
+	if (gl.glsles)
+		src += "#define GLSLES\n";
+
+	if (fragmentShader)
+		src += "#define FRAGMENT_SHADER\n";
+
+#ifndef MKXPZ_BUILD_XCODE
+	src.append((const char*) ___shader_common_h, ___shader_common_h_len);
+#else
+	src += Shader::commonHeader();
+#endif
+
+	return src;
+}
 
 static void setupShaderSource(GLuint shader, GLenum type,
                               const unsigned char *body, int bodySize)

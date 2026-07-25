@@ -27,6 +27,7 @@
 #include "quad.h"
 #include "glstate.h"
 #include "graphics.h"
+#include "customshader.h"
 
 #include <SDL_rect.h>
 
@@ -42,6 +43,8 @@ struct ViewportPrivate
 
 	Color *color;
 	Tone *tone;
+	CustomShader *shader;
+	std::vector<CustomShader*> shaders;
 
 	IntRect screenRect;
 	int isOnScreen;
@@ -53,6 +56,7 @@ struct ViewportPrivate
 	      rect(&tmp.rect),
 	      color(&tmp.color),
 	      tone(&tmp.tone),
+	      shader(0),
 	      isOnScreen(false)
 	{
 		rect->set(x, y, width, height);
@@ -150,6 +154,8 @@ DEF_ATTR_RD_SIMPLE(Viewport, OY,   int,   geometry.orig.y)
 DEF_ATTR_SIMPLE(Viewport, Rect,  Rect&,  *p->rect)
 DEF_ATTR_SIMPLE(Viewport, Color, Color&, *p->color)
 DEF_ATTR_SIMPLE(Viewport, Tone,  Tone&,  *p->tone)
+DEF_ATTR_SIMPLE(Viewport, Shader, CustomShader*, p->shader)
+DEF_ATTR_SIMPLE(Viewport, Shaders, std::vector<CustomShader*>&, p->shaders)
 
 void Viewport::setOX(int value)
 {
@@ -189,8 +195,17 @@ void Viewport::composite()
 		return;
 
 	bool renderEffect = p->needsEffectRender(flashing);
+	bool hasShader = p->shader && !p->shader->isDisposed();
 
-	if (elements.getSize() == 0 && !renderEffect)
+	// Count valid shaders in the vector
+	int validShaderCount = 0;
+	for (size_t i = 0; i < p->shaders.size(); ++i)
+	{
+		if (p->shaders[i] && !p->shaders[i]->isDisposed())
+			validShaderCount++;
+	}
+
+	if (elements.getSize() == 0 && !renderEffect && !hasShader && validShaderCount == 0)
 		return;
 
 	/* Setup scissor */
@@ -198,6 +213,21 @@ void Viewport::composite()
 	glState.scissorBox.pushSet(p->rect->toIntRect());
 
 	Scene::composite();
+
+	/* Apply custom shaders from the shaders vector */
+	if (validShaderCount > 0)
+	{
+		for (size_t i = 0; i < p->shaders.size(); ++i)
+		{
+			CustomShader *customShader = p->shaders[i];
+			if (customShader && !customShader->isDisposed())
+				scene->requestViewportShaderRender(customShader);
+		}
+	}
+
+	/* Apply custom shader if set (backward compatibility) */
+	if (hasShader)
+		scene->requestViewportShaderRender(p->shader);
 
 	/* If any effects are visible, request parent Scene to
 	 * render them. */

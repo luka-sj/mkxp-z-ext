@@ -26,6 +26,7 @@
 #include "sceneelement-binding.h"
 #include "sharedstate.h"
 #include "viewport.h"
+#include "display/customshader.h"
 
 #if RAPI_FULL > 187
 DEF_TYPE(Viewport);
@@ -75,9 +76,63 @@ RB_METHOD(viewportInitialize) {
 DEF_GFX_PROP_OBJ_VAL(Viewport, Rect, Rect, "rect")
 DEF_GFX_PROP_OBJ_VAL(Viewport, Color, Color, "color")
 DEF_GFX_PROP_OBJ_VAL(Viewport, Tone, Tone, "tone")
+DEF_GFX_PROP_OBJ_REF(Viewport, CustomShader, Shader, "@shader")
 
 DEF_GFX_PROP_I(Viewport, OX)
 DEF_GFX_PROP_I(Viewport, OY)
+
+RB_METHOD(viewportGetShaders) {
+    RB_UNUSED_PARAM;
+
+    /* Return the stored Ruby array directly */
+    VALUE ary = rb_iv_get(self, "@shaders");
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
+    }
+    return ary;
+}
+
+RB_METHOD_GUARD(viewportSetShaders) {
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    VALUE ary;
+    rb_get_args(argc, argv, "o", &ary RB_ARG_END);
+
+    std::vector<CustomShader*>& shaders = v->getShaders();
+    shaders.clear();
+
+    if (NIL_P(ary)) {
+        ary = rb_ary_new();
+        rb_iv_set(self, "@shaders", ary);
+        return ary;
+    }
+
+    if (!RB_TYPE_P(ary, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array for shaders");
+
+    /* Store the Ruby array */
+    rb_iv_set(self, "@shaders", ary);
+
+    /* Sync to C++ vector */
+    long len = RARRAY_LEN(ary);
+    for (long i = 0; i < len; ++i) {
+        VALUE elem = rb_ary_entry(ary, i);
+        if (NIL_P(elem)) {
+            shaders.push_back(0);
+        } else {
+#if RAPI_FULL > 187
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, CustomShaderType);
+#else
+            CustomShader *shader = getPrivateDataCheck<CustomShader>(elem, "Shader");
+#endif
+            shaders.push_back(shader);
+        }
+    }
+
+    return ary;
+}
+RB_METHOD_GUARD_END
 
 void viewportBindingInit() {
     VALUE klass = rb_define_class("Viewport", rb_cObject);
@@ -98,4 +153,8 @@ void viewportBindingInit() {
     INIT_PROP_BIND(Viewport, OY, "oy");
     INIT_PROP_BIND(Viewport, Color, "color");
     INIT_PROP_BIND(Viewport, Tone, "tone");
+    INIT_PROP_BIND(Viewport, Shader, "shader");
+
+    _rb_define_method(klass, "shaders", viewportGetShaders);
+    _rb_define_method(klass, "shaders=", viewportSetShaders);
 }
