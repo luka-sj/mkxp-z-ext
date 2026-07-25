@@ -89,7 +89,7 @@ public:
 	void setTone(const Vec4 &value);
 	void setColor(const Vec4 &value);
 	void setInvert(bool value);
-	void setBushDepth(float value);
+	void setBushDepth(bool bushY, bool bushUnder, float bushSlope, float bushIntercept);
 	void setBushOpacity(float value);
 	void applyUniforms(const UniformMap &uniforms);
 	void applyBitmaps(const BitmapMap &bitmaps, int startUnit = 1);
@@ -114,7 +114,10 @@ private:
 	GLint u_tone;
 	GLint u_color;
 	GLint u_invert;
-	GLint u_bushDepth;
+	GLint u_bushY;
+	GLint u_bushUnder;
+	GLint u_bushSlope;
+	GLint u_bushIntercept;
 	GLint u_bushOpacity;
 
 	/* Locations of standard uniform names in the user's shader */
