@@ -91,6 +91,7 @@ private:
 	SpritePrivate *p;
 
 	void draw();
+	bool batchable() const;
 	void onGeometryChange(const Scene::Geometry &);
 
 	void releaseResources();

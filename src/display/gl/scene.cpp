@@ -21,6 +21,7 @@
 
 #include "scene.h"
 #include "sharedstate.h"
+#include "spritebatch.h"
 
 Scene::Scene()
 {}
@@ -96,9 +97,20 @@ void Scene::composite()
 	{
 		SceneElement *e = iter->data;
 
-		if (e->visible)
-			e->draw();
+		if (!e->visible)
+			continue;
+
+		/* Anything that draws by its own route has to come out on top of the
+		 * sprites queued before it, so close the run first. */
+		if (!e->batchable())
+			SpriteBatch::flush();
+
+		e->draw();
 	}
+
+	/* Still inside the caller's scissor push (Viewport::composite wraps this),
+	 * so a run can never leak past a viewport boundary. */
+	SpriteBatch::flush();
 }
 
 

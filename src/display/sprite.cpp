@@ -36,6 +36,7 @@
 #include "shader.h"
 #include "glstate.h"
 #include "quadarray.h"
+#include "spritebatch.h"
 
 // TODO: Replace M_PI with std::numbers::pi once we upgrade to C++20.
 #include <math.h>
@@ -1009,6 +1010,192 @@ void Sprite::update()
     }
 }
 
+/* ---- Sprite batching (see gl/spritebatch.h) ------------------------------ */
+
+namespace {
+
+/* Which of the three stock sprite shaders a run needs. Recorded rather than
+ * recomputed at flush time so the batch cannot disagree with the branch
+ * Sprite::draw() would have taken. */
+enum BatchShader { BatchSimple, BatchAlpha, BatchEffect };
+
+inline bool sameVec4(const Vec4 &a, const Vec4 &b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
+}
+
+/* Everything a run must agree on: anything here that differs between two
+ * sprites forces a flush, because it maps to a uniform or bind that is set
+ * once per draw call. */
+struct BatchKey
+{
+	BatchShader shader;
+	Bitmap *bitmap;
+	BlendType blend;
+	Vec4 tone;
+	Vec4 color;
+	float opacity;
+	bool invert;
+	bool smooth;
+	/* Neutral for every batched sprite (bushDepth == 0), but the shader reads
+	 * them unconditionally, so they still have to match. */
+	bool bushY, bushUnder;
+	float bushSlope, bushIntercept;
+	float bushOpacity;
+
+	bool matches(const BatchKey &o) const
+	{
+		return shader == o.shader && bitmap == o.bitmap && blend == o.blend &&
+		       opacity == o.opacity && invert == o.invert && smooth == o.smooth &&
+		       bushY == o.bushY && bushUnder == o.bushUnder &&
+		       bushSlope == o.bushSlope && bushIntercept == o.bushIntercept &&
+		       bushOpacity == o.bushOpacity &&
+		       sameVec4(tone, o.tone) && sameVec4(color, o.color);
+	}
+};
+
+struct Batcher
+{
+	SimpleQuadArray quads;
+	BatchKey key;
+	bool open;
+
+	Batcher() : open(false) {}
+};
+
+/* Built on first use because SimpleQuadArray needs shState's global IBO, and
+ * deliberately never destroyed: at static teardown the GL context may already
+ * be gone, so releasing the VBO/VAO there is worse than leaking one of each. */
+Batcher *batcher = 0;
+
+Batcher &batchState()
+{
+	if (!batcher)
+		batcher = new Batcher;
+
+	return *batcher;
+}
+
+/* Positions are baked on the CPU, so the run draws under an identity model. */
+const float batchIdentityMat[16] =
+{
+	1, 0, 0, 0,
+	0, 1, 0, 0,
+	0, 0, 1, 0,
+	0, 0, 0, 1
+};
+
+/* Appends one sprite's four vertices, transformed by its own model matrix.
+ * Transform::updateMatrix only ever writes the 2D block and the translation
+ * (indices 0/1/4/5/12/13), column-major. */
+void batchAppend(Batcher &b, const Vertex (&vert)[4], const float *mat)
+{
+	const size_t n = b.quads.count();
+	b.quads.resize(n + 1);
+
+	SVertex *out = &b.quads.vertices[n * 4];
+
+	for (int i = 0; i < 4; ++i)
+	{
+		const Vec2 &p = vert[i].pos;
+		out[i].pos.x  = (mat[0] * p.x) + (mat[4] * p.y) + mat[12];
+		out[i].pos.y  = (mat[1] * p.x) + (mat[5] * p.y) + mat[13];
+		out[i].texPos = vert[i].texPos;
+	}
+}
+
+} // anonymous namespace
+
+void SpriteBatch::flush()
+{
+	if (!batcher || !batcher->open)
+		return;
+
+	Batcher &b = *batcher;
+	b.open = false;
+
+	if (b.quads.count() == 0 || nullOrDisposed(b.key.bitmap))
+	{
+		b.quads.clear();
+		return;
+	}
+
+	const BatchKey &k = b.key;
+	ShaderBase *base;
+
+	switch (k.shader)
+	{
+	case BatchEffect:
+	{
+		SpriteShader &shader = shState->shaders().sprite;
+		shader.bind();
+		shader.applyViewportProj();
+		shader.setSpriteMat(batchIdentityMat);
+		shader.setTone(k.tone);
+		shader.setOpacity(k.opacity);
+		shader.setBushDepth(k.bushY, k.bushUnder, k.bushSlope, k.bushIntercept);
+		shader.setBushOpacity(k.bushOpacity);
+		shader.setShouldRenderPattern(false);
+		shader.setInvert(k.invert);
+		shader.setColor(k.color);
+		base = &shader;
+		break;
+	}
+	case BatchAlpha:
+	{
+		AlphaSpriteShader &shader = shState->shaders().alphaSprite;
+		shader.bind();
+		shader.setSpriteMat(batchIdentityMat);
+		shader.setAlpha(k.opacity);
+		shader.applyViewportProj();
+		base = &shader;
+		break;
+	}
+	default:
+	{
+		SimpleSpriteShader &shader = shState->shaders().simpleSprite;
+		shader.bind();
+		shader.setSpriteMat(batchIdentityMat);
+		shader.applyViewportProj();
+		base = &shader;
+		break;
+	}
+	}
+
+	glState.blendMode.pushSet(k.blend);
+
+	k.bitmap->bindTex(*base, false);
+	TEX::setSmooth(k.smooth);
+
+	b.quads.commit();
+	b.quads.draw();
+
+	TEX::setSmooth(false);
+	glState.blendMode.pop();
+
+	b.quads.clear();
+}
+
+/* SceneElement — a hint for Scene::composite, which flushes the run before any
+ * element that answers false. Only has to be conservative: draw() flushes
+ * before every path that does not append, so a wrong answer here costs at most
+ * a redundant flush, never a z-order error. */
+bool Sprite::batchable() const
+{
+	if (!p->isVisible || emptyFlashFlag)
+		return false;
+
+	if (p->shader && !p->shader->isDisposed())
+		return false;
+
+	for (size_t i = 0; i < p->shaders.size(); ++i)
+		if (p->shaders[i] && !p->shaders[i]->isDisposed())
+			return false;
+
+	return !p->wave.active && p->bushDepth == 0 && !flashing &&
+	       !(p->pattern && !p->pattern->isDisposed());
+}
+
 /* SceneElement */
 void Sprite::draw()
 {
@@ -1043,6 +1230,8 @@ void Sprite::draw()
      * so render them directly in a single pass */
     if (hasAnyCustomShader)
     {
+        SpriteBatch::flush();
+
         /* When both flashing and effective color are set,
          * the one with higher alpha will be blended */
         const Vec4 *blend = (flashing && flashColor.w > p->color->norm.w) ?
@@ -1160,6 +1349,51 @@ void Sprite::draw()
     {
         scalingMethod = shState->config().bitmapSmoothScaling;
     }
+
+    /* Batch path: a run of sprites that agree on every bind and uniform below
+     * is emitted as one draw call. Only position differs, and that is baked
+     * into the vertices. Excluded: the wave effect and per-sprite bush cuts
+     * (per-vertex/per-sprite geometry), flashing and patterns (per-sprite
+     * uniforms that would need their own key), and the smooth-scaling shaders
+     * (they carry a per-texture size uniform). See gl/spritebatch.h. */
+    if (!p->wave.active && p->bushDepth == 0 && !flashing &&
+        !(p->pattern && !p->pattern->isDisposed()) &&
+        scalingMethod == NearestNeighbor)
+    {
+        Batcher &b = batchState();
+
+        BatchKey key;
+        key.shader        = renderEffect ? BatchEffect
+                          : (p->opacity != 255 ? BatchAlpha : BatchSimple);
+        key.bitmap        = p->bitmap;
+        key.blend         = p->blendType;
+        key.tone          = p->tone->norm;
+        key.color         = p->color->norm;
+        key.opacity       = p->opacity.norm;
+        key.invert        = p->invert;
+        key.smooth        = false;
+        key.bushY         = p->bushY;
+        key.bushUnder     = p->bushUnder;
+        key.bushSlope     = p->bushSlope;
+        key.bushIntercept = p->bushIntercept;
+        key.bushOpacity   = p->bushOpacity.norm;
+
+        if (b.open && !b.key.matches(key))
+            SpriteBatch::flush();
+
+        if (!b.open)
+        {
+            b.key  = key;
+            b.open = true;
+        }
+
+        batchAppend(b, p->quad.vert, spriteMat);
+        return;
+    }
+
+    /* Everything below draws immediately, so it has to come out on top of
+     * whatever is still queued. */
+    SpriteBatch::flush();
 
     if (renderEffect)
     {
