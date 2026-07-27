@@ -226,6 +226,11 @@ static SDL_Window *initVideo(const Config &conf) {
     winFlags |= SDL_WINDOW_RESIZABLE;
   if (conf.fullscreen)
     winFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+  /* A hidden window can't hold input focus, so drop that flag with it. */
+  if (conf.hiddenWindow) {
+    winFlags &= ~SDL_WINDOW_INPUT_FOCUS;
+    winFlags |= SDL_WINDOW_HIDDEN;
+  }
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
     return nullptr;

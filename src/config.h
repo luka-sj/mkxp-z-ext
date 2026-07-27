@@ -45,6 +45,10 @@ struct Config {
     
     bool winResizable;
     bool fullscreen;
+    /* Create the window hidden — headless runs (an editor-triggered
+     * compile) that only need the Ruby VM, not a visible game. Set by
+     * mkxp.json or the `hidden` launch argument. */
+    bool hiddenWindow;
     bool fixedAspectRatio;
     int smoothScaling;
     int smoothScalingDown;
