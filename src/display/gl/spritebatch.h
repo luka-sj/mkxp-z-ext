@@ -20,36 +20,13 @@
 #ifndef SPRITEBATCH_H
 #define SPRITEBATCH_H
 
-/* Coalesces runs of compatible sprites into a single draw call.
- *
- * Every Sprite is otherwise its own draw: a program bind, a spriteMat and
- * viewport-projection upload, a texture bind, two glTexParameteri pairs and a
- * VAO bind/glDrawElements. A map screen submits several hundred of those, and
- * the great majority share a texture and differ only in position.
- *
- * Sprites whose draw state matches the open batch append their four
- * CPU-transformed vertices instead of drawing; the run is emitted by one
- * glDrawElements when something incompatible comes along. Because the vertices
- * arrive pre-transformed the batch draws under an identity spriteMat.
- *
- * ORDERING CONTRACT — the batch defers drawing, so anything that draws by any
- * other route MUST flush first or it will appear underneath the deferred run:
- *
- *   - Scene::composite() flushes before every element that is not batchable,
- *     and again after the element loop (which is still inside the viewport's
- *     scissor push, so a batch never leaks across a viewport boundary).
- *   - Sprite::draw() flushes before taking any non-batched path.
- *
- * SceneElement::batchable() must therefore stay in agreement with the branch
- * Sprite::draw() actually takes; Sprite::draw() re-checks and flushes rather
- * than trusting it.
- *
- * The implementation lives in sprite.cpp, next to the draw path whose state it
- * has to mirror.
- */
+/* Skips GL state that a run of similar sprites has already established.
+ * Nothing is deferred, so draw order is unchanged. Implementation in
+ * sprite.cpp. */
 namespace SpriteBatch
 {
-	/* Emits the open run, if any. Safe to call when nothing is open. */
+	/* Drops the assumption that the last run's state is still bound. Must be
+	 * called before anything that draws by another route. */
 	void flush();
 }
 
