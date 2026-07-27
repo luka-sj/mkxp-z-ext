@@ -100,16 +100,12 @@ void Scene::composite()
 		if (!e->visible)
 			continue;
 
-		/* Anything that draws by its own route has to come out on top of the
-		 * sprites queued before it, so close the run first. */
 		if (!e->batchable())
 			SpriteBatch::flush();
 
 		e->draw();
 	}
 
-	/* Still inside the caller's scissor push (Viewport::composite wraps this),
-	 * so a run can never leak past a viewport boundary. */
 	SpriteBatch::flush();
 }
 
