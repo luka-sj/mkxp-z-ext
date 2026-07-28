@@ -697,8 +697,10 @@ Model3D::Model3D(const char *filename)
 					gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
 					              rgba->w, rgba->h, 0,
 					              GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
-					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					/* Nearest, not linear: model textures are pixel art, and
+					 * bilinear filtering blurs their texels away. */
+					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 					gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
