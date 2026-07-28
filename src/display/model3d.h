@@ -68,6 +68,13 @@ public:
 	float getAmbient() const;
 	void setAmbient(float value);
 
+	/* Mesh bounds in model units (read-only). The ortho view volume is sized
+	 * from the radius, so these make px-per-model-unit computable. */
+	float getBBoxRadius() const;
+	float getBBoxWidth() const;
+	float getBBoxHeight() const;
+	float getBBoxDepth() const;
+
 	/* Custom shader */
 	CustomShader *getShader() const;
 	void setShader(CustomShader *shader);

@@ -94,6 +94,20 @@ RB_METHOD_GUARD(model3dSetShader) {
 }
 RB_METHOD_GUARD_END
 
+/* Read-only bounds getter macro */
+#define DEF_M3D_READER_F(PropName) \
+RB_METHOD_GUARD(model3dGet##PropName) { \
+    RB_UNUSED_PARAM; \
+    Model3D *m = getPrivateData<Model3D>(self); \
+    return rb_float_new(m->get##PropName()); \
+} \
+RB_METHOD_GUARD_END
+
+DEF_M3D_READER_F(BBoxRadius)
+DEF_M3D_READER_F(BBoxWidth)
+DEF_M3D_READER_F(BBoxHeight)
+DEF_M3D_READER_F(BBoxDepth)
+
 /* Float property getter/setter macro */
 #define DEF_M3D_PROP_F(PropName, rubyGetter, rubySetter) \
 RB_METHOD_GUARD(model3dGet##PropName) { \
@@ -146,6 +160,11 @@ void model3dBindingInit() {
     _rb_define_method(klass, "render", model3dRender);
     _rb_define_method(klass, "shader", model3dGetShader);
     _rb_define_method(klass, "shader=", model3dSetShader);
+
+    _rb_define_method(klass, "bbox_radius", model3dGetBBoxRadius);
+    _rb_define_method(klass, "bbox_width", model3dGetBBoxWidth);
+    _rb_define_method(klass, "bbox_height", model3dGetBBoxHeight);
+    _rb_define_method(klass, "bbox_depth", model3dGetBBoxDepth);
 
     INIT_M3D_PROP_F(RotationX, "rotation_x")
     INIT_M3D_PROP_F(RotationY, "rotation_y")
