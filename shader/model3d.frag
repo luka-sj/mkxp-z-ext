@@ -15,10 +15,15 @@ uniform float u_ambient;
 void main() {
     vec4 texColor = texture2D(u_diffuseTex, v_texCoord) * u_diffuseColor;
 
+    /* Two-sided: meshes are full of single-sided faces, and a face whose
+     * normal points away should still be lit rather than flat ambient. */
     vec3 norm = normalize(v_normal);
     vec3 lightDir = normalize(u_lightDir);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 result = (u_ambient + diff) * texColor.rgb;
+    float lambert = abs(dot(norm, lightDir));
 
-    gl_FragColor = vec4(clamp(result, 0.0, 1.0), texColor.a);
+    /* Ambient is a floor, not a summand: the light only ever darkens the
+     * texture, so diffuse colours stay true instead of clamping to white. */
+    float shade = u_ambient + (1.0 - u_ambient) * lambert;
+
+    gl_FragColor = vec4(texColor.rgb * shade, texColor.a);
 }
