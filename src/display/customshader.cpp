@@ -803,6 +803,9 @@ void CustomSpriteShaderImpl::applyBitmaps(const BitmapMap &bitmaps, int startUni
 struct CustomShaderPrivate
 {
 	std::string filename;
+	/* Retained fragment source — Model3D recompiles it against the 3D vertex
+	 * stage rather than the sprite one. */
+	std::string source;
 	CustomShaderImpl *shader;
 	CustomSpriteShaderImpl *spriteShader;
 	UniformMap uniforms;
@@ -841,6 +844,7 @@ CustomShader::CustomShader(const char *filename)
 		throw Exception(Exception::RGSSError,
 		                "Failed to read shader file '%s'", filename);
 	}
+	p->source = fragContents;
 
 	// Look for a sibling vertex source: the same path with the extension
 	// replaced by ".vert" (e.g. "Foo.glsl" -> "Foo.vert"). Present -> it is
@@ -896,6 +900,12 @@ const std::string &CustomShader::getFilename() const
 {
 	guardDisposed();
 	return p->filename;
+}
+
+const std::string &CustomShader::getSource() const
+{
+	guardDisposed();
+	return p->source;
 }
 
 CustomShaderImpl *CustomShader::getShader() const
