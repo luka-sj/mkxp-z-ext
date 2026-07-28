@@ -853,6 +853,33 @@ DEF_ATTR_SIMPLE_M3D(Ambient, ambient)
 
 #undef DEF_ATTR_SIMPLE_M3D
 
+/* Read-only mesh bounds, in model units. The orthographic view volume is sized
+ * `bboxRadius * 1.2`, so these let a caller compute px-per-model-unit for a
+ * requested bitmap size instead of calibrating by eye. */
+float Model3D::getBBoxRadius() const
+{
+	guardDisposed();
+	return p->bboxRadius;
+}
+
+float Model3D::getBBoxWidth() const
+{
+	guardDisposed();
+	return p->bboxMax[0] - p->bboxMin[0];
+}
+
+float Model3D::getBBoxHeight() const
+{
+	guardDisposed();
+	return p->bboxMax[1] - p->bboxMin[1];
+}
+
+float Model3D::getBBoxDepth() const
+{
+	guardDisposed();
+	return p->bboxMax[2] - p->bboxMin[2];
+}
+
 CustomShader *Model3D::getShader() const
 {
 	guardDisposed();
