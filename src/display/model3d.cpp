@@ -301,6 +301,9 @@ struct Model3DPrivate
 	/* Camera */
 	float fov;
 	float camX, camY, camZ;
+	float targetX, targetY, targetZ;
+	bool hasTarget;
+	float shiftX, shiftY;
 
 	/* Lighting */
 	float lightX, lightY, lightZ;
@@ -345,6 +348,9 @@ struct Model3DPrivate
 	      posX(0), posY(0), posZ(0),
 	      fov(45.0f),
 	      camX(0), camY(0), camZ(5.0f),
+	      targetX(0), targetY(0), targetZ(0),
+	      hasTarget(false),
+	      shiftX(0), shiftY(0),
 	      lightX(0.5f), lightY(1.0f), lightZ(0.8f),
 	      ambient(0.2f),
 	      vbo(0), vertexCount(0),
@@ -848,6 +854,35 @@ DEF_ATTR_SIMPLE_M3D(CameraFOV, fov)
 DEF_ATTR_SIMPLE_M3D(CameraX, camX)
 DEF_ATTR_SIMPLE_M3D(CameraY, camY)
 DEF_ATTR_SIMPLE_M3D(CameraZ, camZ)
+DEF_ATTR_SIMPLE_M3D(CameraShiftX, shiftX)
+DEF_ATTR_SIMPLE_M3D(CameraShiftY, shiftY)
+
+/* Target getters report the effective aim; the first set seeds the other two
+ * coordinates from the bbox centre so a single-axis set stays sensible. */
+#define DEF_ATTR_TARGET_M3D(name, field, axis) \
+	float Model3D::getCameraTarget##name() const \
+	{ \
+		guardDisposed(); \
+		return p->hasTarget ? p->field : p->bboxCenter[axis]; \
+	} \
+	void Model3D::setCameraTarget##name(float v) \
+	{ \
+		guardDisposed(); \
+		if (!p->hasTarget) \
+		{ \
+			p->targetX = p->bboxCenter[0]; \
+			p->targetY = p->bboxCenter[1]; \
+			p->targetZ = p->bboxCenter[2]; \
+			p->hasTarget = true; \
+		} \
+		p->field = v; \
+	}
+
+DEF_ATTR_TARGET_M3D(X, targetX, 0)
+DEF_ATTR_TARGET_M3D(Y, targetY, 1)
+DEF_ATTR_TARGET_M3D(Z, targetZ, 2)
+
+#undef DEF_ATTR_TARGET_M3D
 DEF_ATTR_SIMPLE_M3D(LightX, lightX)
 DEF_ATTR_SIMPLE_M3D(LightY, lightY)
 DEF_ATTR_SIMPLE_M3D(LightZ, lightZ)
@@ -1027,6 +1062,13 @@ Bitmap *Model3D::render(int width, int height)
 
 	float farPlane = p->bboxRadius * 10.0f;
 	if (farPlane < 100.0f) farPlane = 100.0f;
+	/* A distant pinhole camera must not clip the mesh against the far plane. */
+	float cdx = p->camX - p->bboxCenter[0];
+	float cdy = p->camY - p->bboxCenter[1];
+	float cdz = p->camZ - p->bboxCenter[2];
+	float camDist = sqrtf(cdx*cdx + cdy*cdy + cdz*cdz);
+	if (farPlane < camDist + p->bboxRadius * 2.0f)
+		farPlane = camDist + p->bboxRadius * 2.0f;
 
 	if (p->fov <= 0)
 	{
@@ -1035,15 +1077,27 @@ Bitmap *Model3D::render(int width, int height)
 		float aspect = (float)width / height;
 		float halfH = p->bboxRadius * 1.2f;
 		float halfW = halfH * aspect;
-		mat4_ortho(proj, -halfW, halfW, -halfH, halfH, 0.1f, farPlane);
+		float sx = p->shiftX * (2.0f * halfW / width);
+		float sy = p->shiftY * (2.0f * halfH / height);
+		mat4_ortho(proj, -halfW + sx, halfW + sx, -halfH + sy, halfH + sy,
+		           0.1f, farPlane);
 	}
 	else
 	{
 		mat4_perspective(proj, p->fov, (float)width / height, 0.1f, farPlane);
+		/* Off-axis window: the direction that would land at (shiftX, shiftY)
+		 * px from the image centre renders centred instead. */
+		proj[8] += 2.0f * p->shiftX / width;
+		proj[9] += 2.0f * p->shiftY / height;
 	}
-	mat4_lookAt(view, p->camX, p->camY, p->camZ,
-	            p->bboxCenter[0], p->bboxCenter[1], p->bboxCenter[2],
-	            0, 1, 0);
+	/* Flip projected y so the Bitmap comes back upright, not GL bottom-up. */
+	proj[1] = -proj[1]; proj[5] = -proj[5];
+	proj[9] = -proj[9]; proj[13] = -proj[13];
+
+	float tgtX = p->hasTarget ? p->targetX : p->bboxCenter[0];
+	float tgtY = p->hasTarget ? p->targetY : p->bboxCenter[1];
+	float tgtZ = p->hasTarget ? p->targetZ : p->bboxCenter[2];
+	mat4_lookAt(view, p->camX, p->camY, p->camZ, tgtX, tgtY, tgtZ, 0, 1, 0);
 
 	/* Rotate around the base-center of the bounding box so the
 	 * building's ground floor stays anchored in place. Sequence:
