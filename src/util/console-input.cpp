@@ -66,9 +66,12 @@ void ConsoleInput::stop()
 
 	running = false;
 
-	/* Closing the sockets interrupts a blocking accept()/recv() so the
-	 * agent thread can observe !running and exit. */
+	/* Wake the agent thread out of a blocking accept()/recv(). On POSIX,
+	 * close() never wakes a blocked peer — only shutdown() does — so the
+	 * thread is shaken loose here and closes its own fds on the way out.
+	 * Windows closesocket() does cancel blocking calls. */
 	SDL_LockMutex(clientMutex);
+#ifdef __WIN32__
 	if (clientFd != -1)
 	{
 		CLOSESOCK((sock_t)clientFd);
@@ -79,6 +82,12 @@ void ConsoleInput::stop()
 		CLOSESOCK((sock_t)listenFd);
 		listenFd = -1;
 	}
+#else
+	if (clientFd != -1)
+		::shutdown((sock_t)clientFd, SHUT_RDWR);
+	if (listenFd != -1)
+		::shutdown((sock_t)listenFd, SHUT_RDWR);
+#endif
 	SDL_UnlockMutex(clientMutex);
 
 	if (agentThread)
