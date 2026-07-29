@@ -1137,8 +1137,17 @@ Bitmap *Model3D::render(int width, int height)
 		gl.BindTexture(GL_TEXTURE_2D, mg.hasTex ? mg.texGL : p->whiteTex);
 		if (uDiffTex >= 0) gl.Uniform1i(uDiffTex, 0);
 
-		if (uDiffColor >= 0) gl.Uniform4f(uDiffColor,
-		             mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
+		/* A diffuse MAP replaces the diffuse colour rather than tinting it:
+		 * exporters write a grey Kd beside a full-colour texture (these DS
+		 * assets ship 0.78), which only darkens the art. Opacity still comes
+		 * from the material, so `d` keeps working. */
+		if (uDiffColor >= 0)
+		{
+			if (mg.hasTex)
+				gl.Uniform4f(uDiffColor, 1.0f, 1.0f, 1.0f, mg.diffuseA);
+			else
+				gl.Uniform4f(uDiffColor, mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
+		}
 
 		gl.DrawArrays(GL_TRIANGLES, mg.startVertex, mg.vertexCount);
 	}
