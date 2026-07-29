@@ -55,6 +55,16 @@ static float fwrap(float value, float range)
     return res < 0 ? res + range : res;
 }
 
+/* Inset a tex rect half a texel per side so edge interpolation at
+ * fractional sprite positions cannot sample the neighboring sheet frame. */
+static FloatRect texelInset(const FloatRect &rect, float tx, float ty)
+{
+    float ix = std::min(tx, rect.w / 2.0f);
+    float iy = std::min(ty, rect.h / 2.0f);
+    return FloatRect(rect.x + ix, rect.y + iy,
+                     rect.w - (2.0f * ix), rect.h - (2.0f * iy));
+}
+
 struct SpritePrivate
 {
     Bitmap *bitmap;
@@ -412,11 +422,15 @@ struct SpritePrivate
                                 rect.y * bmSizeHires.y / bmSize.y,
                                 rect.w * bmSizeHires.x / bmSize.x,
                                 rect.h * bmSizeHires.y / bmSize.y);
+            rectHires = texelInset(rectHires,
+                                   0.5f * bmSizeHires.x / bmSize.x,
+                                   0.5f * bmSizeHires.y / bmSize.y);
             quad.setTexRect(mirrored ? rectHires.hFlipped() : rectHires);
         }
         else
         {
-            quad.setTexRect(mirrored ? rect.hFlipped() : rect);
+            FloatRect texRect = texelInset(rect, 0.5f, 0.5f);
+            quad.setTexRect(mirrored ? texRect.hFlipped() : texRect);
         }
         
         /* While corners are active they own the quad positions; only the
