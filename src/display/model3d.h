@@ -58,6 +58,22 @@ public:
 	float getCameraZ() const;
 	void setCameraZ(float value);
 
+	/* Camera look target. Unset, the camera aims at the bbox centre; setting
+	 * any coordinate pins it so the picture plane can be held fixed. */
+	float getCameraTargetX() const;
+	void setCameraTargetX(float value);
+	float getCameraTargetY() const;
+	void setCameraTargetY(float value);
+	float getCameraTargetZ() const;
+	void setCameraTargetZ(float value);
+
+	/* Projection window shift in output px: the direction that would land at
+	 * (+shift_x, +shift_y) of the image centre renders centred instead. */
+	float getCameraShiftX() const;
+	void setCameraShiftX(float value);
+	float getCameraShiftY() const;
+	void setCameraShiftY(float value);
+
 	/* Lighting */
 	float getLightX() const;
 	void setLightX(float value);
