@@ -401,7 +401,7 @@ struct Model3DPrivate
 
 		gl.GenRenderbuffers(1, &depthRbo);
 		gl.BindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, w, h);
+		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
 		depthRboW = w;
 		depthRboH = h;
 	}
@@ -1060,15 +1060,21 @@ Bitmap *Model3D::render(int width, int height)
 	float proj[16], view[16], model[16];
 	float tmp1[16], tmp2[16], tmp3[16], tmp4[16];
 
-	float farPlane = p->bboxRadius * 10.0f;
-	if (farPlane < 100.0f) farPlane = 100.0f;
-	/* A distant pinhole camera must not clip the mesh against the far plane. */
-	float cdx = p->camX - p->bboxCenter[0];
-	float cdy = p->camY - p->bboxCenter[1];
-	float cdz = p->camZ - p->bboxCenter[2];
-	float camDist = sqrtf(cdx*cdx + cdy*cdy + cdz*cdz);
-	if (farPlane < camDist + p->bboxRadius * 2.0f)
-		farPlane = camDist + p->bboxRadius * 2.0f;
+	/* Fit the depth range to the mesh: a distant pinhole eye with a 0.1 near
+	 * plane collapses depth precision until occlusion becomes draw order. */
+	float tgtX = p->hasTarget ? p->targetX : p->bboxCenter[0];
+	float tgtY = p->hasTarget ? p->targetY : p->bboxCenter[1];
+	float tgtZ = p->hasTarget ? p->targetZ : p->bboxCenter[2];
+	float fwdX = tgtX - p->camX, fwdY = tgtY - p->camY, fwdZ = tgtZ - p->camZ;
+	float fwdLen = sqrtf(fwdX*fwdX + fwdY*fwdY + fwdZ*fwdZ);
+	if (fwdLen < 0.0001f) fwdLen = 1.0f;
+	float axial = ((p->bboxCenter[0] - p->camX) * fwdX +
+	               (p->bboxCenter[1] - p->camY) * fwdY +
+	               (p->bboxCenter[2] - p->camZ) * fwdZ) / fwdLen;
+	float zNear = axial - p->bboxRadius * 2.0f;
+	if (zNear < 0.1f) zNear = 0.1f;
+	float farPlane = axial + p->bboxRadius * 2.0f;
+	if (farPlane < zNear + 100.0f) farPlane = zNear + 100.0f;
 
 	if (p->fov <= 0)
 	{
@@ -1080,11 +1086,11 @@ Bitmap *Model3D::render(int width, int height)
 		float sx = p->shiftX * (2.0f * halfW / width);
 		float sy = p->shiftY * (2.0f * halfH / height);
 		mat4_ortho(proj, -halfW + sx, halfW + sx, -halfH + sy, halfH + sy,
-		           0.1f, farPlane);
+		           zNear, farPlane);
 	}
 	else
 	{
-		mat4_perspective(proj, p->fov, (float)width / height, 0.1f, farPlane);
+		mat4_perspective(proj, p->fov, (float)width / height, zNear, farPlane);
 		/* Off-axis window: the direction that would land at (shiftX, shiftY)
 		 * px from the image centre renders centred instead. */
 		proj[8] += 2.0f * p->shiftX / width;
@@ -1094,9 +1100,6 @@ Bitmap *Model3D::render(int width, int height)
 	proj[1] = -proj[1]; proj[5] = -proj[5];
 	proj[9] = -proj[9]; proj[13] = -proj[13];
 
-	float tgtX = p->hasTarget ? p->targetX : p->bboxCenter[0];
-	float tgtY = p->hasTarget ? p->targetY : p->bboxCenter[1];
-	float tgtZ = p->hasTarget ? p->targetZ : p->bboxCenter[2];
 	mat4_lookAt(view, p->camX, p->camY, p->camZ, tgtX, tgtY, tgtZ, 0, 1, 0);
 
 	/* Rotate around the base-center of the bounding box so the
