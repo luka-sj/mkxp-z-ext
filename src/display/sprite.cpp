@@ -62,8 +62,8 @@ struct SpritePrivate
     
     sigslot::connection bitmapDispCon;
     
-    int realOX;
-    int realOY;
+    float realOX;
+    float realOY;
     float realZoomX;
     float realZoomY;
     
@@ -220,7 +220,7 @@ struct SpritePrivate
 		
 		shared.x = trans.getPosition().x;
 		shared.y = trans.getPosition().y;
-		shared.realOffset = Vec2i(realOX, realOY);
+		shared.realOffset = Vec2i(lroundf(realOX), lroundf(realOY));
 		shared.realZoom = Vec2(std::max(realZoomX, 0.0f), std::max(realZoomY, 0.0f));
 		shared.angle = fwrap(trans.getRotation(), 360);
 		
@@ -693,10 +693,10 @@ Sprite::~Sprite()
 }
 
 DEF_ATTR_RD_SIMPLE(Sprite, Bitmap,     Bitmap*, p->realBitmap)
-DEF_ATTR_RD_SIMPLE(Sprite, X,          int,     p->trans.getPosition().x)
-DEF_ATTR_RD_SIMPLE(Sprite, Y,          int,     p->trans.getPosition().y)
-DEF_ATTR_RD_SIMPLE(Sprite, OX,         int,     p->realOX)
-DEF_ATTR_RD_SIMPLE(Sprite, OY,         int,     p->realOY)
+DEF_ATTR_RD_SIMPLE(Sprite, X,          float,   p->trans.getPosition().x)
+DEF_ATTR_RD_SIMPLE(Sprite, Y,          float,   p->trans.getPosition().y)
+DEF_ATTR_RD_SIMPLE(Sprite, OX,         float,   p->realOX)
+DEF_ATTR_RD_SIMPLE(Sprite, OY,         float,   p->realOY)
 DEF_ATTR_RD_SIMPLE(Sprite, ZoomX,      float,   p->realZoomX)
 DEF_ATTR_RD_SIMPLE(Sprite, ZoomY,      float,   p->realZoomY)
 DEF_ATTR_RD_SIMPLE(Sprite, Angle,      float,   p->trans.getRotation())
@@ -761,53 +761,53 @@ void Sprite::setBitmap(Bitmap *bitmap)
     p->updateSrcRectCon();
 }
 
-void Sprite::setX(int value)
+void Sprite::setX(float value)
 {
     guardDisposed();
-    
+
     if (p->trans.getPosition().x == value)
         return;
-    
+
     p->trans.setPosition(Vec2(value, getY()));
 }
 
-void Sprite::setY(int value)
+void Sprite::setY(float value)
 {
     guardDisposed();
-    
+
     if (p->trans.getPosition().y == value)
         return;
-    
+
     p->trans.setPosition(Vec2(getX(), value));
-    
+
     if (p->wave.active)
         p->wave.dirty = true;
-    
+
     if (rgssVer >= 2)
-        setSpriteY(value);
+        setSpriteY(lroundf(value));
 }
 
-void Sprite::setOX(int value)
+void Sprite::setOX(float value)
 {
     guardDisposed();
-    
+
     if (p->realOX == value)
         return;
-    
+
     p->realOX = value;
     p->trans.setOrigin(Vec2(value, getOY()));
 }
 
-void Sprite::setOY(int value)
+void Sprite::setOY(float value)
 {
     guardDisposed();
-    
+
     if (p->realOY == value)
         return;
-    
+
     p->realOY = value;
     p->trans.setOrigin(Vec2(getOX(), value));
-    
+
     if (p->wave.active)
         p->wave.dirty = true;
 }
