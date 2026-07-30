@@ -581,6 +581,12 @@ Model3D::Model3D(const char *filename)
 					faceNorm[1] /= len;
 					faceNorm[2] /= len;
 				}
+				else
+				{
+					/* Degenerate triangle — keep a unit normal so the
+					 * shader never normalizes a zero vector. */
+					faceNorm[0] = 0; faceNorm[1] = 1; faceNorm[2] = 0;
+				}
 			}
 
 			for (int v = 0; v < fv; ++v)
@@ -600,7 +606,11 @@ Model3D::Model3D(const char *filename)
 					float nx = attrib.normals[3 * idx.normal_index + 0];
 					float ny = attrib.normals[3 * idx.normal_index + 1];
 					float nz = attrib.normals[3 * idx.normal_index + 2];
-					if (!(nx != nx) && !(ny != ny) && !(nz != nz)) /* !isnan */
+					/* Reject NaN AND zero length: tinyobj's parser fails on a
+					 * literal `NaN` in the file and silently yields 0, which
+					 * the shader would normalize into NaN and render black. */
+					if (!(nx != nx) && !(ny != ny) && !(nz != nz) &&
+					    ((nx * nx) + (ny * ny) + (nz * nz)) > 1e-12f)
 					{
 						verts.push_back(nx);
 						verts.push_back(ny);
