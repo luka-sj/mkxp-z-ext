@@ -35,12 +35,13 @@ void bitmapInitProps(Bitmap *b, VALUE self);
 
 RB_METHOD_GUARD(model3dInitialize) {
     const char *filename;
-    rb_get_args(argc, argv, "z", &filename RB_ARG_END);
+    const char *mtlFilename = 0;
+    rb_get_args(argc, argv, "z|z", &filename, &mtlFilename RB_ARG_END);
 
     Model3D *m = 0;
 
     GFX_LOCK;
-    m = new Model3D(filename);
+    m = new Model3D(filename, mtlFilename);
     GFX_UNLOCK;
 
     setPrivateData(self, m);

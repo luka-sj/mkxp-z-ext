@@ -210,8 +210,9 @@ class PhysFSMaterialReader : public tinyobj::MaterialReader
 {
 public:
 	PhysFSMaterialReader(const std::string &baseDir,
-	                     const std::string &fallbackMtl = "")
-	    : baseDir(baseDir), fallbackMtl(fallbackMtl)
+	                     const std::string &fallbackMtl = "",
+	                     const std::string &overrideMtl = "")
+	    : baseDir(baseDir), fallbackMtl(fallbackMtl), overrideMtl(overrideMtl)
 	{}
 
 	bool operator()(const std::string &matId,
@@ -220,12 +221,12 @@ public:
 	                std::string *warn,
 	                std::string *err) override
 	{
-		std::string path = baseDir + matId;
+		std::string path = overrideMtl.empty() ? baseDir + matId : overrideMtl;
 
 		SDL_RWops ops;
 		bool opened = false;
 
-		/* Try the path from the mtllib directive first */
+		/* An explicit override wins; otherwise the mtllib directive path. */
 		try
 		{
 			shState->fileSystem().openReadRaw(ops, path.c_str(), false);
@@ -276,6 +277,7 @@ public:
 private:
 	std::string baseDir;
 	std::string fallbackMtl;
+	std::string overrideMtl;
 };
 
 /* ------------------------------------------------------------------ */
@@ -477,7 +479,7 @@ static GLuint compileShader(GLenum type, const char *src, int len,
 /*  Constructor                                                       */
 /* ------------------------------------------------------------------ */
 
-Model3D::Model3D(const char *filename)
+Model3D::Model3D(const char *filename, const char *mtlFilename)
 {
 	p = new Model3DPrivate;
 
@@ -519,7 +521,10 @@ Model3D::Model3D(const char *filename)
 	if (dotPos != std::string::npos)
 		mtlFallback = fnStr.substr(0, dotPos) + ".mtl";
 
-	PhysFSMaterialReader matReader(baseDir, mtlFallback);
+	/* An explicit .mtl lets one mesh render several material variants; its
+	 * textures still resolve against the OBJ's own baseDir. */
+	PhysFSMaterialReader matReader(baseDir, mtlFallback,
+	                               mtlFilename ? mtlFilename : "");
 	std::istringstream objStream(objData);
 
 	bool ok = tinyobj::LoadObj(&attrib, &shapes, &mats, &warn, &err,

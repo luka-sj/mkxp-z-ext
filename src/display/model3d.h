@@ -29,7 +29,9 @@ struct Model3DPrivate;
 class Model3D : public Disposable
 {
 public:
-	Model3D(const char *filename);
+	/* `mtlFilename` overrides the material file the OBJ names, so one mesh can
+	 * render several material/texture variants. */
+	Model3D(const char *filename, const char *mtlFilename = nullptr);
 	~Model3D();
 
 	/* Transform */
