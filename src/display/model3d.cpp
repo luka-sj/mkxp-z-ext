@@ -1052,7 +1052,10 @@ Bitmap *Model3D::render(int width, int height)
 	gl.DepthMask(GL_TRUE);
 	gl.Disable(GL_CULL_FACE);
 	gl.Enable(GL_BLEND);
-	gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	/* Separate alpha: a non-separate func squares src alpha into the
+	 * transparent-cleared target, so a `d 0.4` shadow lands at 0.16. */
+	gl.BlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+	                     GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	gl.ClearColor(0, 0, 0, 0);
 	gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1186,27 +1189,39 @@ Bitmap *Model3D::render(int width, int height)
 	gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
 	                       (void *)(6 * sizeof(float)));
 
-	for (size_t i = 0; i < p->materials.size(); ++i)
+	/* Two passes: opaque geometry first with depth writes, then translucent
+	 * with them off. Material groups draw in `.mtl` order, so a translucent
+	 * overlay declared early would otherwise depth-reject the very surface it
+	 * shades (a shadow quad above a roof). */
+	for (int pass = 0; pass < 2; ++pass)
 	{
-		const MaterialGroup &mg = p->materials[i];
+		const bool translucentPass = (pass == 1);
+		gl.DepthMask(translucentPass ? GL_FALSE : GL_TRUE);
 
-		gl.ActiveTexture(GL_TEXTURE0);
-		gl.BindTexture(GL_TEXTURE_2D, mg.hasTex ? mg.texGL : p->whiteTex);
-		if (uDiffTex >= 0) gl.Uniform1i(uDiffTex, 0);
-
-		/* A diffuse MAP replaces the diffuse colour rather than tinting it:
-		 * exporters write a grey Kd beside a full-colour texture (these DS
-		 * assets ship 0.78), which only darkens the art. Opacity still comes
-		 * from the material, so `d` keeps working. */
-		if (uDiffColor >= 0)
+		for (size_t i = 0; i < p->materials.size(); ++i)
 		{
-			if (mg.hasTex)
-				gl.Uniform4f(uDiffColor, 1.0f, 1.0f, 1.0f, mg.diffuseA);
-			else
-				gl.Uniform4f(uDiffColor, mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
-		}
+			const MaterialGroup &mg = p->materials[i];
+			if ((mg.diffuseA < 1.0f) != translucentPass)
+				continue;
 
-		gl.DrawArrays(GL_TRIANGLES, mg.startVertex, mg.vertexCount);
+			gl.ActiveTexture(GL_TEXTURE0);
+			gl.BindTexture(GL_TEXTURE_2D, mg.hasTex ? mg.texGL : p->whiteTex);
+			if (uDiffTex >= 0) gl.Uniform1i(uDiffTex, 0);
+
+			/* A diffuse MAP replaces the diffuse colour rather than tinting it:
+			 * exporters write a grey Kd beside a full-colour texture (these DS
+			 * assets ship 0.78), which only darkens the art. Opacity still comes
+			 * from the material, so `d` keeps working. */
+			if (uDiffColor >= 0)
+			{
+				if (mg.hasTex)
+					gl.Uniform4f(uDiffColor, 1.0f, 1.0f, 1.0f, mg.diffuseA);
+				else
+					gl.Uniform4f(uDiffColor, mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
+			}
+
+			gl.DrawArrays(GL_TRIANGLES, mg.startVertex, mg.vertexCount);
+		}
 	}
 
 	gl.DisableVertexAttribArray(0);

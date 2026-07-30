@@ -13,7 +13,15 @@ uniform vec3 u_lightDir;
 uniform float u_ambient;
 
 void main() {
-    vec4 texColor = texture2D(u_diffuseTex, v_texCoord) * u_diffuseColor;
+    vec4 tex = texture2D(u_diffuseTex, v_texCoord);
+
+    /* Cutout texels must not write depth, or they punch holes through the
+     * geometry drawn after them. Tested before the material multiply so a
+     * translucent `d` still renders. */
+    if (tex.a < 0.02)
+        discard;
+
+    vec4 texColor = tex * u_diffuseColor;
 
     /* Two-sided: meshes are full of single-sided faces, and a face whose
      * normal points away should still be lit rather than flat ambient. */
