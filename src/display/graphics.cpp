@@ -911,7 +911,11 @@ struct GraphicsPrivate {
     
     // Can be set from Ruby. Takes priority over config setting.
     bool useFrameSkip;
-    
+
+    /* Present only every Nth update; values <= 1 disable it */
+    int fastForward;
+    int fastForwardCount;
+
     bool frozen;
     TEXFBO frozenScene;
     Quad screenQuad;
@@ -943,7 +947,8 @@ struct GraphicsPrivate {
     screen(scRes.x, scRes.y), threadData(rtData),
     glCtx(SDL_GL_GetCurrentContext()), multithreadedMode(true),
     frameRate(DEF_FRAMERATE), frameCount(0), brightness(255),
-    fpsLimiter(frameRate), useFrameSkip(rtData->config.frameSkip), frozen(false),
+    fpsLimiter(frameRate), useFrameSkip(rtData->config.frameSkip),
+    fastForward(1), fastForwardCount(0), frozen(false),
     last_update(0), last_avg_update(0), backingScaleFactor(1), integerScaleFactor(0, 0),
     integerScaleActive(rtData->config.integerScaling.active),
     integerLastMileScaling(rtData->config.integerScaling.lastMileScaling) {
@@ -1309,7 +1314,17 @@ void Graphics::update(bool checkForShutdown) {
     
     if (p->frozen)
         return;
-    
+
+    if (p->fastForward > 1 && ++p->fastForwardCount < p->fastForward) {
+        /* Discard this frame entirely; the next presented
+         * frame's buffer swap paces the whole group */
+        ++p->frameCount;
+        p->threadData->ethread->notifyFrame();
+
+        return;
+    }
+    p->fastForwardCount = 0;
+
     if (p->fpsLimiter.frameSkipRequired()) {
         if (p->useFrameSkip) {
             /* Skip frame */
@@ -1830,6 +1845,13 @@ void Graphics::setScale(double factor) {
 bool Graphics::getFrameskip() const { return p->useFrameSkip; }
 
 void Graphics::setFrameskip(bool value) { p->useFrameSkip = value; }
+
+int Graphics::getFastForward() const { return p->fastForward; }
+
+void Graphics::setFastForward(int value) {
+    p->fastForward = std::max(value, 1);
+    p->fastForwardCount = 0;
+}
 
 Scene *Graphics::getScreen() const { return &p->screen; }
 
