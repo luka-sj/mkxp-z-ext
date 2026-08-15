@@ -85,6 +85,18 @@ public:
 	void setCorners(const Vec2 (&pts)[4]);
 	void clearCorners();
 
+	/* Inputs for the viewport perspective transform. */
+	DECL_ATTR( Lift,       float )
+	DECL_ATTR( ScaleBoost, float )
+	void setClosenessLift(float value);
+	void clearClosenessLift();
+	bool hasClosenessLift() const;
+	float getClosenessLift() const;
+	void setCornerLifts(const float (&lifts)[4]);
+	void clearCornerLifts();
+	bool hasCornerLifts() const;
+	void getCornerLifts(float (&out)[4]) const;
+
 	void initDynAttribs();
 
 private:

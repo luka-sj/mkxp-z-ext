@@ -146,6 +146,21 @@ struct SpritePrivate
         Vec2 pts[4];
     } corners;
 
+    struct
+    {
+        float lift;
+        float closenessLift;
+        bool hasClosenessLift;
+        float boost;
+        /* TL TR BR BL */
+        float cornerLifts[4];
+        bool hasCornerLifts;
+        bool quadActive;
+        Vec2 quadPts[4];
+        Transform trans;
+        bool projected;
+    } persp;
+
     EtcTemps tmp;
     
     sigslot::connection prepareCon;
@@ -193,6 +208,14 @@ struct SpritePrivate
         wave.dirty = false;
 
         corners.active = false;
+
+        persp.lift = 0.0f;
+        persp.closenessLift = 0.0f;
+        persp.hasClosenessLift = false;
+        persp.boost = 1.0f;
+        persp.hasCornerLifts = false;
+        persp.quadActive = false;
+        persp.projected = false;
     }
     
     ~SpritePrivate()
@@ -435,7 +458,7 @@ struct SpritePrivate
         
         /* While corners are active they own the quad positions; only the
          * tex-rect update above applies (src_rect animation keeps working). */
-        if (!corners.active)
+        if (!corners.active && !persp.quadActive)
             quad.setPosRect(FloatRect(0, 0, rect.w, rect.h));
         bushDirty = true;
 
@@ -455,6 +478,74 @@ struct SpritePrivate
         }
     }
     
+    const ViewportPerspective *activePerspective()
+    {
+        if (!viewport)
+            return 0;
+
+        const ViewportPerspective &vp = viewport->perspective();
+        return vp.active ? &vp : 0;
+    }
+
+    void updatePerspective()
+    {
+        bool wasQuad = persp.quadActive;
+        persp.projected = false;
+        persp.quadActive = false;
+
+        const ViewportPerspective *vp = activePerspective();
+        if (!vp || corners.active)
+        {
+            if (wasQuad && !corners.active)
+                quad.setPosRect(FloatRect(0, 0, adjustedSrcRect.w, adjustedSrcRect.h));
+            return;
+        }
+
+        const Vec2 &pos = trans.getPosition();
+        const Vec2 &scale = trans.getScale();
+
+        if (persp.hasCornerLifts)
+        {
+            float ax = trans.getOrigin().x + trans.getSrcRectOrigin().x;
+            float ay = trans.getOrigin().y + trans.getSrcRectOrigin().y;
+            float x0 = pos.x - ax * scale.x;
+            float y0 = pos.y - ay * scale.y;
+            float x1 = x0 + adjustedSrcRect.w * scale.x;
+            float y1 = y0 + adjustedSrcRect.h * scale.y;
+            Vec2 pts[4];
+            float s;
+            vp->project(x0, y0, persp.cornerLifts[0], persp.cornerLifts[0], 1.0f, pts[0].x, pts[0].y, s);
+            vp->project(x1, y0, persp.cornerLifts[1], persp.cornerLifts[1], 1.0f, pts[1].x, pts[1].y, s);
+            vp->project(x1, y1, persp.cornerLifts[2], persp.cornerLifts[2], 1.0f, pts[2].x, pts[2].y, s);
+            vp->project(x0, y1, persp.cornerLifts[3], persp.cornerLifts[3], 1.0f, pts[3].x, pts[3].y, s);
+            persp.quadActive = true;
+            bool changed = !wasQuad;
+            for (int i = 0; i < 4 && !changed; ++i)
+                changed = pts[i].x != persp.quadPts[i].x || pts[i].y != persp.quadPts[i].y;
+            if (changed)
+            {
+                for (int i = 0; i < 4; ++i)
+                    persp.quadPts[i] = pts[i];
+                quad.setPosQuad(persp.quadPts);
+            }
+            return;
+        }
+
+        if (wasQuad)
+            quad.setPosRect(FloatRect(0, 0, adjustedSrcRect.w, adjustedSrcRect.h));
+
+        float closeLift = persp.hasClosenessLift ? persp.closenessLift : persp.lift;
+        float sx, sy, s;
+        vp->project(pos.x, pos.y, persp.lift, closeLift, persp.boost, sx, sy, s);
+        persp.trans.setPosition(Vec2(sx, sy));
+        persp.trans.setScale(Vec2(scale.x * s, scale.y * s));
+        persp.trans.setOrigin(trans.getOrigin());
+        persp.trans.setSrcRectOrigin(trans.getSrcRectOrigin());
+        persp.trans.setRotation(trans.getRotation());
+        persp.trans.setGlobalOffset(trans.getGlobalOffset());
+        persp.projected = true;
+    }
+
     void updateVisibility()
     {
         /* Child bitmaps handle their own visibility checks */
@@ -473,6 +564,12 @@ struct SpritePrivate
         {
             /* Corners define an arbitrary quad; skip the axis-aligned
              * bounding test (same opt-out as the zoom/rotation case). */
+            isVisible = true;
+            return;
+        }
+
+        if (persp.projected || persp.quadActive)
+        {
             isVisible = true;
             return;
         }
@@ -681,7 +778,9 @@ struct SpritePrivate
             updateWave();
 
         updateChild();
-        
+
+        updatePerspective();
+
         updateVisibility();
         
         if (!isVisible)
@@ -1000,6 +1099,70 @@ void Sprite::clearCorners()
     p->wave.dirty = true;
 }
 
+DEF_ATTR_SIMPLE(Sprite, Lift,       float, p->persp.lift)
+DEF_ATTR_SIMPLE(Sprite, ScaleBoost, float, p->persp.boost)
+
+void Sprite::setClosenessLift(float value)
+{
+    guardDisposed();
+
+    p->persp.closenessLift = value;
+    p->persp.hasClosenessLift = true;
+}
+
+void Sprite::clearClosenessLift()
+{
+    guardDisposed();
+
+    p->persp.hasClosenessLift = false;
+}
+
+bool Sprite::hasClosenessLift() const
+{
+    guardDisposed();
+
+    return p->persp.hasClosenessLift;
+}
+
+float Sprite::getClosenessLift() const
+{
+    guardDisposed();
+
+    return p->persp.closenessLift;
+}
+
+void Sprite::setCornerLifts(const float (&lifts)[4])
+{
+    guardDisposed();
+
+    for (int i = 0; i < 4; ++i)
+        p->persp.cornerLifts[i] = lifts[i];
+
+    p->persp.hasCornerLifts = true;
+}
+
+void Sprite::clearCornerLifts()
+{
+    guardDisposed();
+
+    p->persp.hasCornerLifts = false;
+}
+
+bool Sprite::hasCornerLifts() const
+{
+    guardDisposed();
+
+    return p->persp.hasCornerLifts;
+}
+
+void Sprite::getCornerLifts(float (&out)[4]) const
+{
+    guardDisposed();
+
+    for (int i = 0; i < 4; ++i)
+        out[i] = p->persp.cornerLifts[i];
+}
+
 void Sprite::initDynAttribs()
 {
     p->realSrcRect = new Rect;
@@ -1180,8 +1343,13 @@ void Sprite::draw()
     /* While corners are active the model matrix carries the scene global
      * offset only, so the quad's viewport-space corner coordinates map
      * straight through (no position/origin/zoom/rotation). */
-    const float *spriteMat = p->corners.active ?
-        p->offsetTrans.getMatrix() : p->trans.getMatrix();
+    const float *spriteMat;
+    if (p->corners.active || p->persp.quadActive)
+        spriteMat = p->offsetTrans.getMatrix();
+    else if (p->persp.projected)
+        spriteMat = p->persp.trans.getMatrix();
+    else
+        spriteMat = p->trans.getMatrix();
 
     // Check for custom shaders (both single and multiple)
     bool hasCustomShader = p->shader && !p->shader->isDisposed();
@@ -1251,7 +1419,7 @@ void Sprite::draw()
             p->bitmap->bindTex(*base, false);
 
             /* Corners win over the wave effect while active */
-            if (p->wave.active && !p->corners.active)
+            if (p->wave.active && !p->corners.active && !p->persp.quadActive)
                 p->wave.qArray.draw();
             else
                 p->quad.draw();
@@ -1482,7 +1650,7 @@ void Sprite::draw()
     TEX::setSmooth(scalingMethod == Bilinear);
 
     /* Corners win over the wave effect while active */
-    if (p->wave.active && !p->corners.active)
+    if (p->wave.active && !p->corners.active && !p->persp.quadActive)
         p->wave.qArray.draw();
     else
         p->quad.draw();
