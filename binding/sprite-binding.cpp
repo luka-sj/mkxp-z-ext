@@ -170,6 +170,82 @@ RB_METHOD(spriteGetCorners) {
     return rb_iv_get(self, "@corners");
 }
 
+DEF_PROP_F(Sprite, Lift)
+DEF_PROP_F(Sprite, ScaleBoost)
+
+RB_METHOD_GUARD(spriteGetClosenessLift) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    return s->hasClosenessLift() ? rb_float_new(s->getClosenessLift()) : Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteSetClosenessLift) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE arg;
+    rb_get_args(argc, argv, "o", &arg RB_ARG_END);
+
+    if (NIL_P(arg)) {
+        s->clearClosenessLift();
+        return Qnil;
+    }
+
+    if (!rb_obj_is_kind_of(arg, rb_cNumeric))
+        rb_raise(rb_eTypeError, "Expected Numeric or nil for closeness_lift");
+
+    s->setClosenessLift(NUM2DBL(arg));
+    return arg;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteGetCornerLifts) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    if (!s->hasCornerLifts())
+        return Qnil;
+
+    float lifts[4];
+    s->getCornerLifts(lifts);
+    VALUE ary = rb_ary_new2(4);
+    for (int i = 0; i < 4; ++i)
+        rb_ary_push(ary, rb_float_new(lifts[i]));
+    return ary;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteSetCornerLifts) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE arg;
+    rb_get_args(argc, argv, "o", &arg RB_ARG_END);
+
+    if (NIL_P(arg)) {
+        s->clearCornerLifts();
+        return Qnil;
+    }
+
+    if (!RB_TYPE_P(arg, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array or nil for corner_lifts");
+
+    if (RARRAY_LEN(arg) != 4)
+        rb_raise(rb_eArgError, "corner_lifts expects a 4-element Array [tl,tr,br,bl]");
+
+    float lifts[4];
+    for (int i = 0; i < 4; ++i) {
+        VALUE e = rb_ary_entry(arg, i);
+        if (!rb_obj_is_kind_of(e, rb_cNumeric))
+            rb_raise(rb_eTypeError, "corner_lifts elements must be Numeric");
+        lifts[i] = (float) NUM2DBL(e);
+    }
+
+    s->setCornerLifts(lifts);
+    return arg;
+}
+RB_METHOD_GUARD_END
+
 RB_METHOD_GUARD(spriteSetCorners) {
     Sprite *s = getPrivateData<Sprite>(self);
 
@@ -266,4 +342,11 @@ void spriteBindingInit() {
 
     _rb_define_method(klass, "corners", spriteGetCorners);
     _rb_define_method(klass, "corners=", spriteSetCorners);
+
+    INIT_PROP_BIND(Sprite, Lift, "lift");
+    INIT_PROP_BIND(Sprite, ScaleBoost, "scale_boost");
+    _rb_define_method(klass, "closeness_lift", spriteGetClosenessLift);
+    _rb_define_method(klass, "closeness_lift=", spriteSetClosenessLift);
+    _rb_define_method(klass, "corner_lifts", spriteGetCornerLifts);
+    _rb_define_method(klass, "corner_lifts=", spriteSetCornerLifts);
 }
