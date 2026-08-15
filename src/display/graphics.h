@@ -80,6 +80,7 @@ public:
     DECL_ATTR( ShowCursor, bool )
     DECL_ATTR( Scale,    double )
     DECL_ATTR( Frameskip, bool )
+    DECL_ATTR( FastForward, int )
     DECL_ATTR( FixedAspectRatio, bool )
     DECL_ATTR( SmoothScaling, int )
     DECL_ATTR( IntegerScaling, bool )
