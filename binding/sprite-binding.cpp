@@ -170,6 +170,7 @@ RB_METHOD(spriteGetCorners) {
     return rb_iv_get(self, "@corners");
 }
 
+DEF_PROP_B(Sprite, Perspective)
 DEF_PROP_F(Sprite, Lift)
 DEF_PROP_F(Sprite, ScaleBoost)
 
@@ -343,6 +344,7 @@ void spriteBindingInit() {
     _rb_define_method(klass, "corners", spriteGetCorners);
     _rb_define_method(klass, "corners=", spriteSetCorners);
 
+    INIT_PROP_BIND(Sprite, Perspective, "perspective");
     INIT_PROP_BIND(Sprite, Lift, "lift");
     INIT_PROP_BIND(Sprite, ScaleBoost, "scale_boost");
     _rb_define_method(klass, "closeness_lift", spriteGetClosenessLift);

@@ -148,6 +148,7 @@ struct SpritePrivate
 
     struct
     {
+        bool enabled;
         float lift;
         float closenessLift;
         bool hasClosenessLift;
@@ -209,6 +210,7 @@ struct SpritePrivate
 
         corners.active = false;
 
+        persp.enabled = false;
         persp.lift = 0.0f;
         persp.closenessLift = 0.0f;
         persp.hasClosenessLift = false;
@@ -493,7 +495,7 @@ struct SpritePrivate
         persp.projected = false;
         persp.quadActive = false;
 
-        const ViewportPerspective *vp = activePerspective();
+        const ViewportPerspective *vp = persp.enabled ? activePerspective() : 0;
         if (!vp || corners.active)
         {
             if (wasQuad && !corners.active)
@@ -1099,8 +1101,9 @@ void Sprite::clearCorners()
     p->wave.dirty = true;
 }
 
-DEF_ATTR_SIMPLE(Sprite, Lift,       float, p->persp.lift)
-DEF_ATTR_SIMPLE(Sprite, ScaleBoost, float, p->persp.boost)
+DEF_ATTR_SIMPLE(Sprite, Perspective, bool,  p->persp.enabled)
+DEF_ATTR_SIMPLE(Sprite, Lift,        float, p->persp.lift)
+DEF_ATTR_SIMPLE(Sprite, ScaleBoost,  float, p->persp.boost)
 
 void Sprite::setClosenessLift(float value)
 {

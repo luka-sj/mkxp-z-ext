@@ -85,9 +85,11 @@ public:
 	void setCorners(const Vec2 (&pts)[4]);
 	void clearCorners();
 
-	/* Inputs for the viewport perspective transform. */
-	DECL_ATTR( Lift,       float )
-	DECL_ATTR( ScaleBoost, float )
+	/* Inputs for the viewport perspective transform; sprites take part
+	 * only while perspective is set true. */
+	DECL_ATTR( Perspective, bool  )
+	DECL_ATTR( Lift,        float )
+	DECL_ATTR( ScaleBoost,  float )
 	void setClosenessLift(float value);
 	void clearClosenessLift();
 	bool hasClosenessLift() const;
