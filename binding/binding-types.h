@@ -38,6 +38,7 @@ DECL_TYPE(Viewport);
 DECL_TYPE(Tilemap);
 DECL_TYPE(Window);
 DECL_TYPE(CustomShader);
+DECL_TYPE(Model3D);
 
 DECL_TYPE(MiniFFI);
 
@@ -55,6 +56,7 @@ DECL_TYPE(MiniFFI);
 #define TilemapType "Tilemap"
 #define WindowType "Window"
 #define CustomShaderType "Shader"
+#define Model3DType "Model3D"
 
 #define MiniFFIType "MiniFFI"
 #endif

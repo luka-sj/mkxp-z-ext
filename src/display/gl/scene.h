@@ -115,6 +115,10 @@ protected:
 	 */
 	virtual void draw() = 0;
 
+	/* Whether draw() will append to the sprite batch rather than draw
+	 * immediately */
+	virtual bool batchable() const { return false; }
+
 	// FIXME: This should be a signal
 	virtual void onGeometryChange(const Scene::Geometry &) {}
 

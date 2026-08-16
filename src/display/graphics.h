@@ -80,12 +80,15 @@ public:
     DECL_ATTR( ShowCursor, bool )
     DECL_ATTR( Scale,    double )
     DECL_ATTR( Frameskip, bool )
+    DECL_ATTR( FastForward, int )
+    DECL_ATTR( ShaderTimeScale, double )
     DECL_ATTR( FixedAspectRatio, bool )
     DECL_ATTR( SmoothScaling, int )
     DECL_ATTR( IntegerScaling, bool )
     DECL_ATTR( LastMileScaling, bool )
     DECL_ATTR( Threadsafe, bool )
     double averageFrameRate();
+    double shaderTime();
 
 	/* <internal> */
 	Scene *getScreen() const;

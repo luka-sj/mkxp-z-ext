@@ -36,6 +36,7 @@
 #include "shader.h"
 #include "glstate.h"
 #include "quadarray.h"
+#include "spritebatch.h"
 
 // TODO: Replace M_PI with std::numbers::pi once we upgrade to C++20.
 #include <math.h>
@@ -54,6 +55,16 @@ static float fwrap(float value, float range)
     return res < 0 ? res + range : res;
 }
 
+/* Inset a tex rect half a texel per side so edge interpolation at
+ * fractional sprite positions cannot sample the neighboring sheet frame. */
+static FloatRect texelInset(const FloatRect &rect, float tx, float ty)
+{
+    float ix = std::min(tx, rect.w / 2.0f);
+    float iy = std::min(ty, rect.h / 2.0f);
+    return FloatRect(rect.x + ix, rect.y + iy,
+                     rect.w - (2.0f * ix), rect.h - (2.0f * iy));
+}
+
 struct SpritePrivate
 {
     Bitmap *bitmap;
@@ -61,8 +72,8 @@ struct SpritePrivate
     
     sigslot::connection bitmapDispCon;
     
-    int realOX;
-    int realOY;
+    float realOX;
+    float realOY;
     float realZoomX;
     float realZoomY;
     
@@ -135,6 +146,22 @@ struct SpritePrivate
         Vec2 pts[4];
     } corners;
 
+    struct
+    {
+        bool enabled;
+        float lift;
+        float closenessLift;
+        bool hasClosenessLift;
+        float boost;
+        /* TL TR BR BL */
+        float cornerLifts[4];
+        bool hasCornerLifts;
+        bool quadActive;
+        Vec2 quadPts[4];
+        Transform trans;
+        bool projected;
+    } persp;
+
     EtcTemps tmp;
     
     sigslot::connection prepareCon;
@@ -182,6 +209,15 @@ struct SpritePrivate
         wave.dirty = false;
 
         corners.active = false;
+
+        persp.enabled = false;
+        persp.lift = 0.0f;
+        persp.closenessLift = 0.0f;
+        persp.hasClosenessLift = false;
+        persp.boost = 1.0f;
+        persp.hasCornerLifts = false;
+        persp.quadActive = false;
+        persp.projected = false;
     }
     
     ~SpritePrivate()
@@ -219,7 +255,7 @@ struct SpritePrivate
 		
 		shared.x = trans.getPosition().x;
 		shared.y = trans.getPosition().y;
-		shared.realOffset = Vec2i(realOX, realOY);
+		shared.realOffset = Vec2i(lroundf(realOX), lroundf(realOY));
 		shared.realZoom = Vec2(std::max(realZoomX, 0.0f), std::max(realZoomY, 0.0f));
 		shared.angle = fwrap(trans.getRotation(), 360);
 		
@@ -411,16 +447,20 @@ struct SpritePrivate
                                 rect.y * bmSizeHires.y / bmSize.y,
                                 rect.w * bmSizeHires.x / bmSize.x,
                                 rect.h * bmSizeHires.y / bmSize.y);
+            rectHires = texelInset(rectHires,
+                                   0.5f * bmSizeHires.x / bmSize.x,
+                                   0.5f * bmSizeHires.y / bmSize.y);
             quad.setTexRect(mirrored ? rectHires.hFlipped() : rectHires);
         }
         else
         {
-            quad.setTexRect(mirrored ? rect.hFlipped() : rect);
+            FloatRect texRect = texelInset(rect, 0.5f, 0.5f);
+            quad.setTexRect(mirrored ? texRect.hFlipped() : texRect);
         }
         
         /* While corners are active they own the quad positions; only the
          * tex-rect update above applies (src_rect animation keeps working). */
-        if (!corners.active)
+        if (!corners.active && !persp.quadActive)
             quad.setPosRect(FloatRect(0, 0, rect.w, rect.h));
         bushDirty = true;
 
@@ -440,6 +480,74 @@ struct SpritePrivate
         }
     }
     
+    const ViewportPerspective *activePerspective()
+    {
+        if (!viewport)
+            return 0;
+
+        const ViewportPerspective &vp = viewport->perspective();
+        return vp.active ? &vp : 0;
+    }
+
+    void updatePerspective()
+    {
+        bool wasQuad = persp.quadActive;
+        persp.projected = false;
+        persp.quadActive = false;
+
+        const ViewportPerspective *vp = persp.enabled ? activePerspective() : 0;
+        if (!vp || corners.active)
+        {
+            if (wasQuad && !corners.active)
+                quad.setPosRect(FloatRect(0, 0, adjustedSrcRect.w, adjustedSrcRect.h));
+            return;
+        }
+
+        const Vec2 &pos = trans.getPosition();
+        const Vec2 &scale = trans.getScale();
+
+        if (persp.hasCornerLifts)
+        {
+            float ax = trans.getOrigin().x + trans.getSrcRectOrigin().x;
+            float ay = trans.getOrigin().y + trans.getSrcRectOrigin().y;
+            float x0 = pos.x - ax * scale.x;
+            float y0 = pos.y - ay * scale.y;
+            float x1 = x0 + adjustedSrcRect.w * scale.x;
+            float y1 = y0 + adjustedSrcRect.h * scale.y;
+            Vec2 pts[4];
+            float s;
+            vp->project(x0, y0, persp.cornerLifts[0], persp.cornerLifts[0], 1.0f, pts[0].x, pts[0].y, s);
+            vp->project(x1, y0, persp.cornerLifts[1], persp.cornerLifts[1], 1.0f, pts[1].x, pts[1].y, s);
+            vp->project(x1, y1, persp.cornerLifts[2], persp.cornerLifts[2], 1.0f, pts[2].x, pts[2].y, s);
+            vp->project(x0, y1, persp.cornerLifts[3], persp.cornerLifts[3], 1.0f, pts[3].x, pts[3].y, s);
+            persp.quadActive = true;
+            bool changed = !wasQuad;
+            for (int i = 0; i < 4 && !changed; ++i)
+                changed = pts[i].x != persp.quadPts[i].x || pts[i].y != persp.quadPts[i].y;
+            if (changed)
+            {
+                for (int i = 0; i < 4; ++i)
+                    persp.quadPts[i] = pts[i];
+                quad.setPosQuad(persp.quadPts);
+            }
+            return;
+        }
+
+        if (wasQuad)
+            quad.setPosRect(FloatRect(0, 0, adjustedSrcRect.w, adjustedSrcRect.h));
+
+        float closeLift = persp.hasClosenessLift ? persp.closenessLift : persp.lift;
+        float sx, sy, s;
+        vp->project(pos.x, pos.y, persp.lift, closeLift, persp.boost, sx, sy, s);
+        persp.trans.setPosition(Vec2(sx, sy));
+        persp.trans.setScale(Vec2(scale.x * s, scale.y * s));
+        persp.trans.setOrigin(trans.getOrigin());
+        persp.trans.setSrcRectOrigin(trans.getSrcRectOrigin());
+        persp.trans.setRotation(trans.getRotation());
+        persp.trans.setGlobalOffset(trans.getGlobalOffset());
+        persp.projected = true;
+    }
+
     void updateVisibility()
     {
         /* Child bitmaps handle their own visibility checks */
@@ -458,6 +566,12 @@ struct SpritePrivate
         {
             /* Corners define an arbitrary quad; skip the axis-aligned
              * bounding test (same opt-out as the zoom/rotation case). */
+            isVisible = true;
+            return;
+        }
+
+        if (persp.projected || persp.quadActive)
+        {
             isVisible = true;
             return;
         }
@@ -666,7 +780,9 @@ struct SpritePrivate
             updateWave();
 
         updateChild();
-        
+
+        updatePerspective();
+
         updateVisibility();
         
         if (!isVisible)
@@ -692,10 +808,10 @@ Sprite::~Sprite()
 }
 
 DEF_ATTR_RD_SIMPLE(Sprite, Bitmap,     Bitmap*, p->realBitmap)
-DEF_ATTR_RD_SIMPLE(Sprite, X,          int,     p->trans.getPosition().x)
-DEF_ATTR_RD_SIMPLE(Sprite, Y,          int,     p->trans.getPosition().y)
-DEF_ATTR_RD_SIMPLE(Sprite, OX,         int,     p->realOX)
-DEF_ATTR_RD_SIMPLE(Sprite, OY,         int,     p->realOY)
+DEF_ATTR_RD_SIMPLE(Sprite, X,          float,   p->trans.getPosition().x)
+DEF_ATTR_RD_SIMPLE(Sprite, Y,          float,   p->trans.getPosition().y)
+DEF_ATTR_RD_SIMPLE(Sprite, OX,         float,   p->realOX)
+DEF_ATTR_RD_SIMPLE(Sprite, OY,         float,   p->realOY)
 DEF_ATTR_RD_SIMPLE(Sprite, ZoomX,      float,   p->realZoomX)
 DEF_ATTR_RD_SIMPLE(Sprite, ZoomY,      float,   p->realZoomY)
 DEF_ATTR_RD_SIMPLE(Sprite, Angle,      float,   p->trans.getRotation())
@@ -760,53 +876,53 @@ void Sprite::setBitmap(Bitmap *bitmap)
     p->updateSrcRectCon();
 }
 
-void Sprite::setX(int value)
+void Sprite::setX(float value)
 {
     guardDisposed();
-    
+
     if (p->trans.getPosition().x == value)
         return;
-    
+
     p->trans.setPosition(Vec2(value, getY()));
 }
 
-void Sprite::setY(int value)
+void Sprite::setY(float value)
 {
     guardDisposed();
-    
+
     if (p->trans.getPosition().y == value)
         return;
-    
+
     p->trans.setPosition(Vec2(getX(), value));
-    
+
     if (p->wave.active)
         p->wave.dirty = true;
-    
+
     if (rgssVer >= 2)
-        setSpriteY(value);
+        setSpriteY(lroundf(value));
 }
 
-void Sprite::setOX(int value)
+void Sprite::setOX(float value)
 {
     guardDisposed();
-    
+
     if (p->realOX == value)
         return;
-    
+
     p->realOX = value;
     p->trans.setOrigin(Vec2(value, getOY()));
 }
 
-void Sprite::setOY(int value)
+void Sprite::setOY(float value)
 {
     guardDisposed();
-    
+
     if (p->realOY == value)
         return;
-    
+
     p->realOY = value;
     p->trans.setOrigin(Vec2(getOX(), value));
-    
+
     if (p->wave.active)
         p->wave.dirty = true;
 }
@@ -985,6 +1101,71 @@ void Sprite::clearCorners()
     p->wave.dirty = true;
 }
 
+DEF_ATTR_SIMPLE(Sprite, Perspective, bool,  p->persp.enabled)
+DEF_ATTR_SIMPLE(Sprite, Lift,        float, p->persp.lift)
+DEF_ATTR_SIMPLE(Sprite, ScaleBoost,  float, p->persp.boost)
+
+void Sprite::setClosenessLift(float value)
+{
+    guardDisposed();
+
+    p->persp.closenessLift = value;
+    p->persp.hasClosenessLift = true;
+}
+
+void Sprite::clearClosenessLift()
+{
+    guardDisposed();
+
+    p->persp.hasClosenessLift = false;
+}
+
+bool Sprite::hasClosenessLift() const
+{
+    guardDisposed();
+
+    return p->persp.hasClosenessLift;
+}
+
+float Sprite::getClosenessLift() const
+{
+    guardDisposed();
+
+    return p->persp.closenessLift;
+}
+
+void Sprite::setCornerLifts(const float (&lifts)[4])
+{
+    guardDisposed();
+
+    for (int i = 0; i < 4; ++i)
+        p->persp.cornerLifts[i] = lifts[i];
+
+    p->persp.hasCornerLifts = true;
+}
+
+void Sprite::clearCornerLifts()
+{
+    guardDisposed();
+
+    p->persp.hasCornerLifts = false;
+}
+
+bool Sprite::hasCornerLifts() const
+{
+    guardDisposed();
+
+    return p->persp.hasCornerLifts;
+}
+
+void Sprite::getCornerLifts(float (&out)[4]) const
+{
+    guardDisposed();
+
+    for (int i = 0; i < 4; ++i)
+        out[i] = p->persp.cornerLifts[i];
+}
+
 void Sprite::initDynAttribs()
 {
     p->realSrcRect = new Rect;
@@ -1009,6 +1190,148 @@ void Sprite::update()
     }
 }
 
+/* ---- Sprite batching (see gl/spritebatch.h) ------------------------------ */
+
+namespace {
+
+enum BatchShader { BatchSimple, BatchAlpha, BatchEffect };
+
+inline bool sameVec4(const Vec4 &a, const Vec4 &b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
+}
+
+/* Anything differing here needs a re-bind. */
+struct BatchKey
+{
+	BatchShader shader;
+	Bitmap *bitmap;
+	BlendType blend;
+	Vec4 tone;
+	Vec4 color;
+	float opacity;
+	bool invert;
+	bool bushY, bushUnder;
+	float bushSlope, bushIntercept;
+	float bushOpacity;
+
+	bool matches(const BatchKey &o) const
+	{
+		return shader == o.shader && bitmap == o.bitmap && blend == o.blend &&
+		       opacity == o.opacity && invert == o.invert &&
+		       bushY == o.bushY && bushUnder == o.bushUnder &&
+		       bushSlope == o.bushSlope && bushIntercept == o.bushIntercept &&
+		       bushOpacity == o.bushOpacity &&
+		       sameVec4(tone, o.tone) && sameVec4(color, o.color);
+	}
+};
+
+/* State the current run has already established. */
+struct RunState
+{
+	bool valid;
+	BatchKey key;
+
+	RunState() : valid(false) {}
+};
+
+RunState run;
+
+/* Sets whatever the run has not set yet; spriteMat always differs per sprite. */
+void bindRunState(const BatchKey &key, const float *spriteMat)
+{
+	const bool fresh = !run.valid || !run.key.matches(key);
+
+	switch (key.shader)
+	{
+	case BatchEffect:
+	{
+		SpriteShader &shader = shState->shaders().sprite;
+		shader.bind();
+		if (fresh)
+		{
+			shader.applyViewportProj();
+			shader.setTone(key.tone);
+			shader.setOpacity(key.opacity);
+			shader.setBushDepth(key.bushY, key.bushUnder,
+			                    key.bushSlope, key.bushIntercept);
+			shader.setBushOpacity(key.bushOpacity);
+			shader.setShouldRenderPattern(false);
+			shader.setInvert(key.invert);
+			shader.setColor(key.color);
+		}
+		shader.setSpriteMat(spriteMat);
+		if (fresh)
+		{
+			key.bitmap->bindTex(shader, false);
+			TEX::setSmooth(false);
+		}
+		run.valid = true;
+		run.key   = key;
+		return;
+	}
+	case BatchAlpha:
+	{
+		AlphaSpriteShader &shader = shState->shaders().alphaSprite;
+		shader.bind();
+		if (fresh)
+		{
+			shader.applyViewportProj();
+			shader.setAlpha(key.opacity);
+		}
+		shader.setSpriteMat(spriteMat);
+		if (fresh)
+		{
+			key.bitmap->bindTex(shader, false);
+			TEX::setSmooth(false);
+		}
+		run.valid = true;
+		run.key   = key;
+		return;
+	}
+	default:
+	{
+		SimpleSpriteShader &shader = shState->shaders().simpleSprite;
+		shader.bind();
+		if (fresh)
+			shader.applyViewportProj();
+		shader.setSpriteMat(spriteMat);
+		if (fresh)
+		{
+			key.bitmap->bindTex(shader, false);
+			TEX::setSmooth(false);
+		}
+		run.valid = true;
+		run.key   = key;
+		return;
+	}
+	}
+}
+
+} // anonymous namespace
+
+void SpriteBatch::flush()
+{
+	run.valid = false;
+}
+
+/* Conservative hint for Scene::composite; draw() is authoritative. */
+bool Sprite::batchable() const
+{
+	if (!p->isVisible || emptyFlashFlag)
+		return false;
+
+	if (p->shader && !p->shader->isDisposed())
+		return false;
+
+	for (size_t i = 0; i < p->shaders.size(); ++i)
+		if (p->shaders[i] && !p->shaders[i]->isDisposed())
+			return false;
+
+	return !p->wave.active && p->bushDepth == 0 && !flashing &&
+	       !(p->pattern && !p->pattern->isDisposed());
+}
+
 /* SceneElement */
 void Sprite::draw()
 {
@@ -1023,8 +1346,13 @@ void Sprite::draw()
     /* While corners are active the model matrix carries the scene global
      * offset only, so the quad's viewport-space corner coordinates map
      * straight through (no position/origin/zoom/rotation). */
-    const float *spriteMat = p->corners.active ?
-        p->offsetTrans.getMatrix() : p->trans.getMatrix();
+    const float *spriteMat;
+    if (p->corners.active || p->persp.quadActive)
+        spriteMat = p->offsetTrans.getMatrix();
+    else if (p->persp.projected)
+        spriteMat = p->persp.trans.getMatrix();
+    else
+        spriteMat = p->trans.getMatrix();
 
     // Check for custom shaders (both single and multiple)
     bool hasCustomShader = p->shader && !p->shader->isDisposed();
@@ -1043,6 +1371,8 @@ void Sprite::draw()
      * so render them directly in a single pass */
     if (hasAnyCustomShader)
     {
+        SpriteBatch::flush();
+
         /* When both flashing and effective color are set,
          * the one with higher alpha will be blended */
         const Vec4 *blend = (flashing && flashColor.w > p->color->norm.w) ?
@@ -1055,7 +1385,7 @@ void Sprite::draw()
             shader->applyViewportProj();
             shader->setSpriteMat(spriteMat);
             shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
-            shader->setTime(SDL_GetTicks() / 1000.0f);
+            shader->setTime(shState->graphics().shaderTime());
             shader->setOpacity(p->opacity.norm);
             shader->setTone(p->tone->norm);
             shader->setColor(*blend);
@@ -1092,7 +1422,7 @@ void Sprite::draw()
             p->bitmap->bindTex(*base, false);
 
             /* Corners win over the wave effect while active */
-            if (p->wave.active && !p->corners.active)
+            if (p->wave.active && !p->corners.active && !p->persp.quadActive)
                 p->wave.qArray.draw();
             else
                 p->quad.draw();
@@ -1160,6 +1490,37 @@ void Sprite::draw()
     {
         scalingMethod = shState->config().bitmapSmoothScaling;
     }
+
+    /* Run path: reuse the state a matching predecessor already set. Wave, bush,
+     * flash, pattern and smooth scaling all need per-sprite state, so they opt out. */
+    if (!p->wave.active && p->bushDepth == 0 && !flashing &&
+        !(p->pattern && !p->pattern->isDisposed()) &&
+        scalingMethod == NearestNeighbor)
+    {
+        BatchKey key;
+        key.shader        = renderEffect ? BatchEffect
+                          : (p->opacity != 255 ? BatchAlpha : BatchSimple);
+        key.bitmap        = p->bitmap;
+        key.blend         = p->blendType;
+        key.tone          = p->tone->norm;
+        key.color         = p->color->norm;
+        key.opacity       = p->opacity.norm;
+        key.invert        = p->invert;
+        key.bushY         = p->bushY;
+        key.bushUnder     = p->bushUnder;
+        key.bushSlope     = p->bushSlope;
+        key.bushIntercept = p->bushIntercept;
+        key.bushOpacity   = p->bushOpacity.norm;
+
+        bindRunState(key, spriteMat);
+
+        glState.blendMode.pushSet(p->blendType);
+        p->quad.draw();
+        glState.blendMode.pop();
+        return;
+    }
+
+    SpriteBatch::flush();
 
     if (renderEffect)
     {
@@ -1292,7 +1653,7 @@ void Sprite::draw()
     TEX::setSmooth(scalingMethod == Bilinear);
 
     /* Corners win over the wave effect while active */
-    if (p->wave.active && !p->corners.active)
+    if (p->wave.active && !p->corners.active && !p->persp.quadActive)
         p->wave.qArray.draw();
     else
         p->quad.draw();
