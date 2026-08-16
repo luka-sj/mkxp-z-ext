@@ -706,8 +706,7 @@ public:
         shader->setTexSize(Vec2i(viewpRect.w, viewpRect.h));
         shader->setTranslation(Vec2i());
 
-        // Use real time in seconds for animation
-        shader->setTime(SDL_GetTicks() / 1000.0f);
+        shader->setTime(shState->graphics().shaderTime());
 
         // Apply custom uniform parameters
         shader->applyUniforms(customShader->getUniforms());
@@ -916,6 +915,10 @@ struct GraphicsPrivate {
     int fastForward;
     int fastForwardCount;
 
+    double shaderTimeScale;
+    double shaderTimeBase;
+    double shaderTimeAccum;
+
     bool frozen;
     TEXFBO frozenScene;
     Quad screenQuad;
@@ -948,7 +951,8 @@ struct GraphicsPrivate {
     glCtx(SDL_GL_GetCurrentContext()), multithreadedMode(true),
     frameRate(DEF_FRAMERATE), frameCount(0), brightness(255),
     fpsLimiter(frameRate), useFrameSkip(rtData->config.frameSkip),
-    fastForward(1), fastForwardCount(0), frozen(false),
+    fastForward(1), fastForwardCount(0),
+    shaderTimeScale(1), shaderTimeBase(0), shaderTimeAccum(0), frozen(false),
     last_update(0), last_avg_update(0), backingScaleFactor(1), integerScaleFactor(0, 0),
     integerScaleActive(rtData->config.integerScaling.active),
     integerLastMileScaling(rtData->config.integerScaling.lastMileScaling) {
@@ -1252,6 +1256,11 @@ struct GraphicsPrivate {
         if (!(force || multithreadedMode)) return;
         
         SDL_UnlockMutex(glResourceLock);
+    }
+
+    double shaderTime() {
+        double raw = SDL_GetTicks() / 1000.0;
+        return shaderTimeAccum + (raw - shaderTimeBase) * shaderTimeScale;
     }
 
     void updateAvgFPS() {
@@ -1851,6 +1860,16 @@ int Graphics::getFastForward() const { return p->fastForward; }
 void Graphics::setFastForward(int value) {
     p->fastForward = std::max(value, 1);
     p->fastForwardCount = 0;
+}
+
+double Graphics::shaderTime() { return p->shaderTime(); }
+
+double Graphics::getShaderTimeScale() const { return p->shaderTimeScale; }
+
+void Graphics::setShaderTimeScale(double value) {
+    p->shaderTimeAccum = p->shaderTime();
+    p->shaderTimeBase = SDL_GetTicks() / 1000.0;
+    p->shaderTimeScale = std::max(value, 0.0);
 }
 
 Scene *Graphics::getScreen() const { return &p->screen; }
