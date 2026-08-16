@@ -1385,7 +1385,7 @@ void Sprite::draw()
             shader->applyViewportProj();
             shader->setSpriteMat(spriteMat);
             shader->setTexSize(Vec2i(p->bitmap->width(), p->bitmap->height()));
-            shader->setTime(SDL_GetTicks() / 1000.0f);
+            shader->setTime(shState->graphics().shaderTime());
             shader->setOpacity(p->opacity.norm);
             shader->setTone(p->tone->norm);
             shader->setColor(*blend);
