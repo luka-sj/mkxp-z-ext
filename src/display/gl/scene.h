@@ -61,6 +61,7 @@ public:
 	                                   const Vec4& /* flash */,
 	                                   const Vec4& /* tone */) {}
 	virtual void requestViewportShaderRender(CustomShader* /* shader */) {}
+	virtual void requestViewportZoomRender(const Vec2& /* zoom */) {}
 
 	const Geometry &getGeometry() const { return geometry; }
 

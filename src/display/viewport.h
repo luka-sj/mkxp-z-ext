@@ -78,6 +78,8 @@ public:
 	DECL_ATTR( Tone,  Tone&  )
 	DECL_ATTR( Shader, class CustomShader* )
 	DECL_ATTR( Shaders, std::vector<class CustomShader*>& )
+	DECL_ATTR( ZoomX, float )
+	DECL_ATTR( ZoomY, float )
 
 	const ViewportPerspective &perspective() const { return persp; }
 	void setPerspective(const ViewportPerspective &value) { persp = value; }

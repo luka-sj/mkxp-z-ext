@@ -649,21 +649,7 @@ public:
         const IntRect &viewpRect = glState.scissorBox.get();
         const IntRect &screenRect = geometry.rect;
 
-        // Ensure viewport temp texture is allocated and sized correctly
-        if (!viewportShaderTexInited) {
-            TEXFBO::init(viewportShaderTex);
-            viewportShaderTexInited = true;
-            viewportShaderTexW = 0;
-            viewportShaderTexH = 0;
-        }
-
-        // Resize temp texture if viewport size changed
-        if (viewportShaderTexW != viewpRect.w || viewportShaderTexH != viewpRect.h) {
-            TEXFBO::allocEmpty(viewportShaderTex, viewpRect.w, viewpRect.h);
-            TEXFBO::linkFBO(viewportShaderTex);
-            viewportShaderTexW = viewpRect.w;
-            viewportShaderTexH = viewpRect.h;
-        }
+        ensureViewportShaderTex(viewpRect.w, viewpRect.h);
 
         // Disable scissor for blitting
         glState.scissorTest.pushSet(false);
@@ -722,6 +708,34 @@ public:
         glState.blend.pop();
     }
 
+    void requestViewportZoomRender(const Vec2 &zoom) {
+        const IntRect &viewpRect = glState.scissorBox.get();
+
+        ensureViewportShaderTex(viewpRect.w, viewpRect.h);
+
+        IntRect srcRect(viewpRect.x, viewpRect.y, viewpRect.w, viewpRect.h);
+        IntRect texRect(0, 0, viewpRect.w, viewpRect.h);
+        IntRect dstRect(viewpRect.x, viewpRect.y,
+                        (int) (viewpRect.w * zoom.x + 0.5f),
+                        (int) (viewpRect.h * zoom.y + 0.5f));
+
+        glState.scissorTest.pushSet(false);
+
+        int scaleIsSpecial = GLMeta::blitScaleIsSpecial(viewportShaderTex, false, texRect, pp.frontBuffer(), srcRect);
+        GLMeta::blitBegin(viewportShaderTex, false, scaleIsSpecial);
+        GLMeta::blitSource(pp.frontBuffer(), scaleIsSpecial);
+        GLMeta::blitRectangle(srcRect, texRect, false);
+        GLMeta::blitEnd();
+
+        scaleIsSpecial = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, dstRect, viewportShaderTex, texRect);
+        GLMeta::blitBegin(pp.frontBuffer(), false, scaleIsSpecial);
+        GLMeta::blitSource(viewportShaderTex, scaleIsSpecial);
+        GLMeta::blitRectangle(texRect, dstRect, false);
+        GLMeta::blitEnd();
+
+        glState.scissorTest.pop();
+    }
+
     void setBrightness(float norm) {
         brightnessQuad.setColor(Vec4(0, 0, 0, 1.0f - norm));
         
@@ -746,6 +760,22 @@ public:
     PingPong &getPP() { return pp; }
     
 private:
+    void ensureViewportShaderTex(int w, int h) {
+        if (!viewportShaderTexInited) {
+            TEXFBO::init(viewportShaderTex);
+            viewportShaderTexInited = true;
+            viewportShaderTexW = 0;
+            viewportShaderTexH = 0;
+        }
+
+        if (viewportShaderTexW != w || viewportShaderTexH != h) {
+            TEXFBO::allocEmpty(viewportShaderTex, w, h);
+            TEXFBO::linkFBO(viewportShaderTex);
+            viewportShaderTexW = w;
+            viewportShaderTexH = h;
+        }
+    }
+
     PingPong pp;
     Quad screenQuad;
 
