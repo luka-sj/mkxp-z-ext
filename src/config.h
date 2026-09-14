@@ -36,12 +36,19 @@ struct Config {
     
     bool debugMode;
     bool winConsole;
+    /* Loopback TCP port for the agent console pipe; 0 = disabled.
+     * Only honored in debug mode. */
+    int consoleAgentPort;
     bool preferMetalRenderer;
     bool displayFPS;
     bool printFPS;
     
     bool winResizable;
     bool fullscreen;
+    /* Create the window hidden — headless runs (an editor-triggered
+     * compile) that only need the Ruby VM, not a visible game. Set by
+     * mkxp.json or the `hidden` launch argument. */
+    bool hiddenWindow;
     bool fixedAspectRatio;
     int smoothScaling;
     int smoothScalingDown;

@@ -24,6 +24,8 @@
 
 #include "util.h"
 
+#include <vector>
+
 class Scene;
 class Bitmap;
 class Disposable;
@@ -66,6 +68,9 @@ public:
     int displayWidth() const;
     int displayHeight() const;
 	void resizeScreen(int width, int height);
+	/* Sets side-by-side display regions; each entry is eight ints
+	 * `sx, sy, sw, sh, dx, dy, dw, dh`. Empty restores the normal present. */
+	void setScreenRegions(const std::vector<int> &regions);
     void resizeWindow(int width, int height, bool center=false);
 	void drawMovieFrame(const THEORAPLAY_VideoFrame* video, Bitmap *videoBitmap);
 	bool updateMovieInput(Movie *movie);
@@ -80,12 +85,15 @@ public:
     DECL_ATTR( ShowCursor, bool )
     DECL_ATTR( Scale,    double )
     DECL_ATTR( Frameskip, bool )
+    DECL_ATTR( FastForward, int )
+    DECL_ATTR( ShaderTimeScale, double )
     DECL_ATTR( FixedAspectRatio, bool )
     DECL_ATTR( SmoothScaling, int )
     DECL_ATTR( IntegerScaling, bool )
     DECL_ATTR( LastMileScaling, bool )
     DECL_ATTR( Threadsafe, bool )
     double averageFrameRate();
+    double shaderTime();
 
 	/* <internal> */
 	Scene *getScreen() const;

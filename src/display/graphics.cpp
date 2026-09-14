@@ -496,6 +496,11 @@ private:
     void bind() { FBO::bind(rt[dstInd].fbo); }
 };
 
+struct ScreenRegion {
+    IntRect src;
+    IntRect dst;
+};
+
 class ScreenScene : public Scene {
 public:
     ScreenScene(int width, int height) : pp(width, height), viewportShaderTexInited(false),
@@ -509,6 +514,12 @@ public:
     ~ScreenScene() {
         if (viewportShaderTexInited)
             TEXFBO::fini(viewportShaderTex);
+        for (size_t i = 0; i < regionTex.size(); ++i)
+            TEXFBO::fini(regionTex[i]);
+    }
+
+    void setScreenRegions(const std::vector<ScreenRegion> &value) {
+        screenRegions = value;
     }
     
     void composite() {
@@ -533,6 +544,47 @@ public:
             
             brightnessQuad.draw();
         }
+
+        applyScreenRegions();
+    }
+
+    /* Rescales the finished native frame into the requested display regions.
+     * Runs once per frame, so a screen made of stacked viewports scales a
+     * single time instead of once per layer. */
+    void applyScreenRegions() {
+        if (screenRegions.empty())
+            return;
+
+        glState.scissorTest.pushSet(false);
+
+        for (size_t i = 0; i < screenRegions.size(); ++i) {
+            const IntRect &src = screenRegions[i].src;
+            ensureRegionTex(i, src.w, src.h);
+            IntRect texRect(0, 0, src.w, src.h);
+            int sp = GLMeta::blitScaleIsSpecial(regionTex[i], false, texRect, pp.frontBuffer(), src);
+            GLMeta::blitBegin(regionTex[i], false, sp);
+            GLMeta::blitSource(pp.frontBuffer(), sp);
+            GLMeta::blitRectangle(src, texRect, false);
+            GLMeta::blitEnd();
+        }
+
+        glState.clearColor.pushSet(Vec4(0, 0, 0, 1));
+        FBO::bind(pp.frontBuffer().fbo);
+        FBO::clear();
+        glState.clearColor.pop();
+
+        for (size_t i = 0; i < screenRegions.size(); ++i) {
+            const IntRect &src = screenRegions[i].src;
+            const IntRect &dst = screenRegions[i].dst;
+            IntRect texRect(0, 0, src.w, src.h);
+            int sp = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, dst, regionTex[i], texRect);
+            GLMeta::blitBegin(pp.frontBuffer(), false, sp);
+            GLMeta::blitSource(regionTex[i], sp);
+            GLMeta::blitRectangle(texRect, dst, false);
+            GLMeta::blitEnd();
+        }
+
+        glState.scissorTest.pop();
     }
     
     void requestViewportRender(const Vec4 &c, const Vec4 &f, const Vec4 &t) {
@@ -649,21 +701,7 @@ public:
         const IntRect &viewpRect = glState.scissorBox.get();
         const IntRect &screenRect = geometry.rect;
 
-        // Ensure viewport temp texture is allocated and sized correctly
-        if (!viewportShaderTexInited) {
-            TEXFBO::init(viewportShaderTex);
-            viewportShaderTexInited = true;
-            viewportShaderTexW = 0;
-            viewportShaderTexH = 0;
-        }
-
-        // Resize temp texture if viewport size changed
-        if (viewportShaderTexW != viewpRect.w || viewportShaderTexH != viewpRect.h) {
-            TEXFBO::allocEmpty(viewportShaderTex, viewpRect.w, viewpRect.h);
-            TEXFBO::linkFBO(viewportShaderTex);
-            viewportShaderTexW = viewpRect.w;
-            viewportShaderTexH = viewpRect.h;
-        }
+        ensureViewportShaderTex(viewpRect.w, viewpRect.h);
 
         // Disable scissor for blitting
         glState.scissorTest.pushSet(false);
@@ -706,8 +744,7 @@ public:
         shader->setTexSize(Vec2i(viewpRect.w, viewpRect.h));
         shader->setTranslation(Vec2i());
 
-        // Use real time in seconds for animation
-        shader->setTime(SDL_GetTicks() / 1000.0f);
+        shader->setTime(shState->graphics().shaderTime());
 
         // Apply custom uniform parameters
         shader->applyUniforms(customShader->getUniforms());
@@ -721,6 +758,34 @@ public:
         glState.blend.pushSet(false);
         viewportQuad.draw();
         glState.blend.pop();
+    }
+
+    void requestViewportZoomRender(const Vec2 &zoom) {
+        const IntRect &viewpRect = glState.scissorBox.get();
+
+        ensureViewportShaderTex(viewpRect.w, viewpRect.h);
+
+        IntRect srcRect(viewpRect.x, viewpRect.y, viewpRect.w, viewpRect.h);
+        IntRect texRect(0, 0, viewpRect.w, viewpRect.h);
+        IntRect dstRect(viewpRect.x, viewpRect.y,
+                        (int) (viewpRect.w * zoom.x + 0.5f),
+                        (int) (viewpRect.h * zoom.y + 0.5f));
+
+        glState.scissorTest.pushSet(false);
+
+        int scaleIsSpecial = GLMeta::blitScaleIsSpecial(viewportShaderTex, false, texRect, pp.frontBuffer(), srcRect);
+        GLMeta::blitBegin(viewportShaderTex, false, scaleIsSpecial);
+        GLMeta::blitSource(pp.frontBuffer(), scaleIsSpecial);
+        GLMeta::blitRectangle(srcRect, texRect, false);
+        GLMeta::blitEnd();
+
+        scaleIsSpecial = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, dstRect, viewportShaderTex, texRect);
+        GLMeta::blitBegin(pp.frontBuffer(), false, scaleIsSpecial);
+        GLMeta::blitSource(viewportShaderTex, scaleIsSpecial);
+        GLMeta::blitRectangle(texRect, dstRect, false);
+        GLMeta::blitEnd();
+
+        glState.scissorTest.pop();
     }
 
     void setBrightness(float norm) {
@@ -747,6 +812,35 @@ public:
     PingPong &getPP() { return pp; }
     
 private:
+    void ensureRegionTex(size_t i, int w, int h) {
+        while (regionTex.size() <= i) {
+            TEXFBO tex;
+            TEXFBO::init(tex);
+            regionTex.push_back(tex);
+        }
+
+        if (regionTex[i].width != w || regionTex[i].height != h) {
+            TEXFBO::allocEmpty(regionTex[i], w, h);
+            TEXFBO::linkFBO(regionTex[i]);
+        }
+    }
+
+    void ensureViewportShaderTex(int w, int h) {
+        if (!viewportShaderTexInited) {
+            TEXFBO::init(viewportShaderTex);
+            viewportShaderTexInited = true;
+            viewportShaderTexW = 0;
+            viewportShaderTexH = 0;
+        }
+
+        if (viewportShaderTexW != w || viewportShaderTexH != h) {
+            TEXFBO::allocEmpty(viewportShaderTex, w, h);
+            TEXFBO::linkFBO(viewportShaderTex);
+            viewportShaderTexW = w;
+            viewportShaderTexH = h;
+        }
+    }
+
     PingPong pp;
     Quad screenQuad;
 
@@ -758,6 +852,10 @@ private:
     bool viewportShaderTexInited;
     int viewportShaderTexW, viewportShaderTexH;
     Quad viewportQuad;
+
+    // Side-by-side display regions and their scratch textures
+    std::vector<ScreenRegion> screenRegions;
+    std::vector<TEXFBO> regionTex;
 };
 
 /* Nanoseconds per second */
@@ -911,7 +1009,15 @@ struct GraphicsPrivate {
     
     // Can be set from Ruby. Takes priority over config setting.
     bool useFrameSkip;
-    
+
+    /* Present only every Nth update; values <= 1 disable it */
+    int fastForward;
+    int fastForwardCount;
+
+    double shaderTimeScale;
+    double shaderTimeBase;
+    double shaderTimeAccum;
+
     bool frozen;
     TEXFBO frozenScene;
     Quad screenQuad;
@@ -943,7 +1049,9 @@ struct GraphicsPrivate {
     screen(scRes.x, scRes.y), threadData(rtData),
     glCtx(SDL_GL_GetCurrentContext()), multithreadedMode(true),
     frameRate(DEF_FRAMERATE), frameCount(0), brightness(255),
-    fpsLimiter(frameRate), useFrameSkip(rtData->config.frameSkip), frozen(false),
+    fpsLimiter(frameRate), useFrameSkip(rtData->config.frameSkip),
+    fastForward(1), fastForwardCount(0),
+    shaderTimeScale(1), shaderTimeBase(0), shaderTimeAccum(0), frozen(false),
     last_update(0), last_avg_update(0), backingScaleFactor(1), integerScaleFactor(0, 0),
     integerScaleActive(rtData->config.integerScaling.active),
     integerLastMileScaling(rtData->config.integerScaling.lastMileScaling) {
@@ -1249,6 +1357,11 @@ struct GraphicsPrivate {
         SDL_UnlockMutex(glResourceLock);
     }
 
+    double shaderTime() {
+        double raw = SDL_GetTicks() / 1000.0;
+        return shaderTimeAccum + (raw - shaderTimeBase) * shaderTimeScale;
+    }
+
     void updateAvgFPS() {
         SDL_LockMutex(avgFPSLock);
         if (avgFPSData.size() > 40)
@@ -1309,7 +1422,17 @@ void Graphics::update(bool checkForShutdown) {
     
     if (p->frozen)
         return;
-    
+
+    if (p->fastForward > 1 && ++p->fastForwardCount < p->fastForward) {
+        /* Discard this frame entirely; the next presented
+         * frame's buffer swap paces the whole group */
+        ++p->frameCount;
+        p->threadData->ethread->notifyFrame();
+
+        return;
+    }
+    p->fastForwardCount = 0;
+
     if (p->fpsLimiter.frameSkipRequired()) {
         if (p->useFrameSkip) {
             /* Skip frame */
@@ -1620,6 +1743,18 @@ void Graphics::resizeScreen(int width, int height) {
     shState->eThread().requestWindowResize(width, height);
 }
 
+void Graphics::setScreenRegions(const std::vector<int> &regions) {
+    std::vector<ScreenRegion> parsed;
+    for (size_t i = 0; i + 8 <= regions.size(); i += 8) {
+        ScreenRegion region;
+        region.src = IntRect(regions[i + 0], regions[i + 1], regions[i + 2], regions[i + 3]);
+        region.dst = IntRect(regions[i + 4], regions[i + 5], regions[i + 6], regions[i + 7]);
+        parsed.push_back(region);
+    }
+
+    p->screen.setScreenRegions(parsed);
+}
+
 void Graphics::resizeWindow(int width, int height, bool center) {
     p->threadData->rqWindowAdjust.wait();
     p->checkResize();
@@ -1830,6 +1965,23 @@ void Graphics::setScale(double factor) {
 bool Graphics::getFrameskip() const { return p->useFrameSkip; }
 
 void Graphics::setFrameskip(bool value) { p->useFrameSkip = value; }
+
+int Graphics::getFastForward() const { return p->fastForward; }
+
+void Graphics::setFastForward(int value) {
+    p->fastForward = std::max(value, 1);
+    p->fastForwardCount = 0;
+}
+
+double Graphics::shaderTime() { return p->shaderTime(); }
+
+double Graphics::getShaderTimeScale() const { return p->shaderTimeScale; }
+
+void Graphics::setShaderTimeScale(double value) {
+    p->shaderTimeAccum = p->shaderTime();
+    p->shaderTimeBase = SDL_GetTicks() / 1000.0;
+    p->shaderTimeScale = std::max(value, 0.0);
+}
 
 Scene *Graphics::getScreen() const { return &p->screen; }
 

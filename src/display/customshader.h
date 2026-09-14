@@ -135,6 +135,9 @@ public:
 	~CustomShader();
 
 	const std::string &getFilename() const;
+	/* The retained fragment source, for consumers that recompile it against a
+	 * different vertex stage (Model3D). */
+	const std::string &getSource() const;
 	CustomShaderImpl *getShader() const;
 	CustomSpriteShaderImpl *getSpriteShader() const;
 

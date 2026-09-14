@@ -31,6 +31,7 @@
 #include "util/boost-hash.h"
 #include "util/exception.h"
 #include "util/encoding.h"
+#include "util/console-input.h"
 
 #include "config.h"
 
@@ -48,6 +49,10 @@ extern "C" {
 
 #if RAPI_FULL >= 190
 #include <ruby/encoding.h>
+#endif
+
+#if RAPI_FULL >= 200
+#include <ruby/debug.h>
 #endif
 }
 
@@ -79,6 +84,13 @@ ScriptBinding scriptBindingImpl = {mriBindingExecute, mriBindingTerminate,
 
 ScriptBinding *scriptBinding = &scriptBindingImpl;
 
+/* Developer console (input + agent pipe); non-null only in debug mode. */
+static ConsoleInput *consoleInput = nullptr;
+#if RAPI_FULL >= 200
+/* Last captured binding of the frame calling Graphics.update. */
+static VALUE consoleCallerBinding = Qnil;
+#endif
+
 void tableBindingInit();
 void etcBindingInit();
 void fontBindingInit();
@@ -91,6 +103,7 @@ void tilemapBindingInit();
 void windowVXBindingInit();
 void tilemapVXBindingInit();
 void shaderBindingInit();
+void model3dBindingInit();
 
 void inputBindingInit();
 void audioBindingInit();
@@ -158,6 +171,14 @@ json5pp::value rb2json(VALUE v);
 
 RB_METHOD(mkxpParseCSV);
 
+RB_METHOD(mkxpConsolePoll);
+RB_METHOD(mkxpConsoleWrite);
+RB_METHOD(mkxpAgentPoll);
+RB_METHOD(mkxpAgentWrite);
+#if RAPI_FULL >= 200
+RB_METHOD(mkxpCaptureBinding);
+#endif
+
 static void mriBindingInit() {
     tableBindingInit();
     etcBindingInit();
@@ -167,7 +188,8 @@ static void mriBindingInit() {
     viewportBindingInit();
     planeBindingInit();
     shaderBindingInit();
-    
+    model3dBindingInit();
+
     if (rgssVer == 1) {
         windowBindingInit();
         tilemapBindingInit();
@@ -257,7 +279,16 @@ static void mriBindingInit() {
     _rb_define_module_function(mod, "default_font_family=", mkxpSetDefaultFontFamily);
     
     _rb_define_module_function(mod, "parse_csv", mkxpParseCSV);
-    
+
+    _rb_define_module_function(mod, "_console_poll", mkxpConsolePoll);
+    _rb_define_module_function(mod, "_console_write", mkxpConsoleWrite);
+    _rb_define_module_function(mod, "_agent_poll", mkxpAgentPoll);
+    _rb_define_module_function(mod, "_agent_write", mkxpAgentWrite);
+#if RAPI_FULL >= 200
+    _rb_define_module_function(mod, "_capture_binding", mkxpCaptureBinding);
+    rb_gc_register_address(&consoleCallerBinding);
+#endif
+
     _rb_define_method(rb_cString, "to_utf8", mkxpStringToUTF8);
     _rb_define_method(rb_cString, "to_utf8!", mkxpStringToUTF8Bang);
     
@@ -397,14 +428,111 @@ RB_METHOD(mkxpDesensitize) {
 
 RB_METHOD(mkxpPuts) {
     RB_UNUSED_PARAM;
-    
+
     const char *str;
     rb_get_args(argc, argv, "z", &str RB_ARG_END);
-    
+
     Debug() << str;
-    
+
     return Qnil;
 }
+
+/* Next queued human console command, or nil. */
+RB_METHOD(mkxpConsolePoll) {
+    RB_UNUSED_PARAM;
+
+    if (!consoleInput)
+        return Qnil;
+
+    std::string cmd;
+    if (consoleInput->poll(cmd))
+        return rb_utf8_str_new(cmd.c_str(), cmd.size());
+
+    return Qnil;
+}
+
+/* Human eval output → terminal. */
+RB_METHOD(mkxpConsoleWrite) {
+    RB_UNUSED_PARAM;
+
+    const char *str;
+    rb_get_args(argc, argv, "z", &str RB_ARG_END);
+
+    if (consoleInput)
+        consoleInput->write(str);
+
+    return Qnil;
+}
+
+/* Next queued agent-pipe command, or nil. */
+RB_METHOD(mkxpAgentPoll) {
+    RB_UNUSED_PARAM;
+
+    if (!consoleInput)
+        return Qnil;
+
+    std::string cmd;
+    if (consoleInput->pollAgent(cmd))
+        return rb_utf8_str_new(cmd.c_str(), cmd.size());
+
+    return Qnil;
+}
+
+/* One framed agent response → the client socket. */
+RB_METHOD(mkxpAgentWrite) {
+    RB_UNUSED_PARAM;
+
+    const char *str;
+    rb_get_args(argc, argv, "z", &str RB_ARG_END);
+
+    if (consoleInput)
+        consoleInput->agentWrite(str);
+
+    return Qnil;
+}
+
+#if RAPI_FULL >= 200
+/* Return the binding of the first stack frame whose self is neither
+ * MKXP_Console nor Graphics — i.e. the code that called Graphics.update. */
+static VALUE captureCallerBindingCallback(const rb_debug_inspector_t *dc, void *ptr)
+{
+    VALUE *out = static_cast<VALUE *>(ptr);
+    VALUE graphics = rb_const_get(rb_cObject, rb_intern("Graphics"));
+    VALUE mkxp_con = rb_const_get(rb_cObject, rb_intern("MKXP_Console"));
+
+    long len = RARRAY_LEN(rb_debug_inspector_backtrace_locations(dc));
+    if (len > 30)
+        len = 30;
+
+    for (long i = 0; i < len; i++)
+    {
+        VALUE b = rb_debug_inspector_frame_binding_get(dc, i);
+        if (NIL_P(b))
+            continue;
+
+        VALUE frame_self = rb_debug_inspector_frame_self_get(dc, i);
+        if (frame_self == graphics || frame_self == mkxp_con)
+            continue;
+
+        *out = b;
+        return Qnil;
+    }
+
+    return Qnil;
+}
+
+RB_METHOD(mkxpCaptureBinding) {
+    RB_UNUSED_PARAM;
+
+    VALUE binding = Qnil;
+    rb_debug_inspector_open(captureCallerBindingCallback, &binding);
+
+    if (!NIL_P(binding))
+        consoleCallerBinding = binding;
+
+    return consoleCallerBinding;
+}
+#endif
 
 RB_METHOD(mkxpPlatform) {
     RB_UNUSED_PARAM;
@@ -1292,7 +1420,104 @@ static void mriBindingExecute() {
     BacktraceData btData;
     
     mriBindingInit();
-    
+
+    if (conf.editor.debug)
+    {
+        consoleInput = new ConsoleInput(conf.consoleAgentPort);
+        consoleInput->start();
+
+        /* Inject the console driver: drain the human + agent queues each
+         * frame and eval in the live caller-of-Graphics.update binding.
+         * Output is plain terminal text (human) / NDJSON (agent). */
+        rb_eval_string(
+            /* The engine's freopen leaves Ruby's $stdout block-buffered
+             * (sync=false) while $stderr is unbuffered. Game output
+             * (echoln -> printf -> $stdout) would then lag behind the
+             * console's cooked-mode echo and eval output, desyncing the
+             * cursor. Force it unbuffered so everything hits the console
+             * in program order at the live cursor. */
+            "$stdout.sync = true\n"
+            "$stderr.sync = true\n"
+            "STDOUT.sync = true\n"
+            "STDERR.sync = true\n"
+            "\n"
+            "module MKXP_Console\n"
+            "  @binding = TOPLEVEL_BINDING\n"
+            "\n"
+            "  def self.json_escape(s)\n"
+            "    s = s.to_s\n"
+            "    q = 34.chr\n"
+            "    bs = 92.chr\n"
+            "    out = q.dup\n"
+            "    s.each_char do |c|\n"
+            "      o = c.ord\n"
+            "      if c == q\n"
+            "        out << bs << q\n"
+            "      elsif c == bs\n"
+            "        out << bs << bs\n"
+            "      elsif o == 10\n"
+            "        out << bs << 'n'\n"
+            "      elsif o == 13\n"
+            "        out << bs << 'r'\n"
+            "      elsif o == 9\n"
+            "        out << bs << 't'\n"
+            "      elsif o < 32\n"
+            "        out << (bs + 'u' + format('%04x', o))\n"
+            "      else\n"
+            "        out << c\n"
+            "      end\n"
+            "    end\n"
+            "    out << q\n"
+            "    out\n"
+            "  end\n"
+            "\n"
+            "  def self.capture!\n"
+            "    b = System._capture_binding rescue nil\n"
+            "    @binding = b if b\n"
+            "  end\n"
+            "\n"
+            "  def self.eval_human(cmd)\n"
+            "    capture!\n"
+            "    begin\n"
+            "      result = eval(cmd, @binding, \"(console)\", 1)\n"
+            "      System._console_write(\"=> \" + result.inspect)\n"
+            "    rescue Exception => e\n"
+            "      System._console_write(e.class.to_s + \": \" + e.message)\n"
+            "      (e.backtrace || []).each { |l| System._console_write(\"  \" + l) }\n"
+            "    end\n"
+            "  end\n"
+            "\n"
+            "  def self.eval_agent(cmd)\n"
+            "    capture!\n"
+            "    begin\n"
+            "      result = eval(cmd, @binding, \"(agent)\", 1)\n"
+            "      System._agent_write('{\"ok\":true,\"result\":' + json_escape(result.inspect) + '}')\n"
+            "    rescue Exception => e\n"
+            "      bt = (e.backtrace || []).map { |l| json_escape(l) }.join(\",\")\n"
+            "      System._agent_write('{\"ok\":false,\"error\":' + json_escape(e.class.to_s + \": \" + e.message) + ',\"backtrace\":[' + bt + ']}')\n"
+            "    end\n"
+            "  end\n"
+            "\n"
+            "  def self.process\n"
+            "    while (cmd = System._console_poll)\n"
+            "      eval_human(cmd)\n"
+            "    end\n"
+            "    while (cmd = System._agent_poll)\n"
+            "      eval_agent(cmd)\n"
+            "    end\n"
+            "  end\n"
+            "end\n"
+            "\n"
+            "class << Graphics\n"
+            "  alias_method :_mkxp_console_original_update, :update\n"
+            "  def update\n"
+            "    _mkxp_console_original_update\n"
+            "    MKXP_Console.process\n"
+            "  end\n"
+            "end\n"
+        );
+    }
+
     std::string &customScript = conf.customScript;
     if (!customScript.empty())
         runCustomScript(customScript);
@@ -1306,7 +1531,20 @@ static void mriBindingExecute() {
 #endif
     if (!NIL_P(exc) && !rb_obj_is_kind_of(exc, rb_eSystemExit))
         showExc(exc, btData);
-    
+
+    if (consoleInput)
+    {
+        consoleInput->stop();
+        /* Not deleted: the stdin thread may be detached and still parked
+         * in a read at exit; freeing would risk a use-after-free. The OS
+         * reclaims it on process exit. */
+        consoleInput = nullptr;
+#if RAPI_FULL >= 200
+        rb_gc_unregister_address(&consoleCallerBinding);
+        consoleCallerBinding = Qnil;
+#endif
+    }
+
     ruby_cleanup(0);
     
     shState->rtData().rqTermAck.set();

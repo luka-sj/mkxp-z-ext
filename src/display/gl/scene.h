@@ -61,6 +61,7 @@ public:
 	                                   const Vec4& /* flash */,
 	                                   const Vec4& /* tone */) {}
 	virtual void requestViewportShaderRender(CustomShader* /* shader */) {}
+	virtual void requestViewportZoomRender(const Vec2& /* zoom */) {}
 
 	const Geometry &getGeometry() const { return geometry; }
 
@@ -114,6 +115,10 @@ protected:
 	 * will fire immediately before each frame draw.
 	 */
 	virtual void draw() = 0;
+
+	/* Whether draw() will append to the sprite batch rather than draw
+	 * immediately */
+	virtual bool batchable() const { return false; }
 
 	// FIXME: This should be a signal
 	virtual void onGeometryChange(const Scene::Geometry &) {}

@@ -45,6 +45,7 @@ struct ViewportPrivate
 	Tone *tone;
 	CustomShader *shader;
 	std::vector<CustomShader*> shaders;
+	Vec2 zoom;
 
 	IntRect screenRect;
 	int isOnScreen;
@@ -57,6 +58,7 @@ struct ViewportPrivate
 	      color(&tmp.color),
 	      tone(&tmp.tone),
 	      shader(0),
+	      zoom(1.0f, 1.0f),
 	      isOnScreen(false)
 	{
 		rect->set(x, y, width, height);
@@ -156,6 +158,8 @@ DEF_ATTR_SIMPLE(Viewport, Color, Color&, *p->color)
 DEF_ATTR_SIMPLE(Viewport, Tone,  Tone&,  *p->tone)
 DEF_ATTR_SIMPLE(Viewport, Shader, CustomShader*, p->shader)
 DEF_ATTR_SIMPLE(Viewport, Shaders, std::vector<CustomShader*>&, p->shaders)
+DEF_ATTR_SIMPLE(Viewport, ZoomX, float, p->zoom.x)
+DEF_ATTR_SIMPLE(Viewport, ZoomY, float, p->zoom.y)
 
 void Viewport::setOX(int value)
 {
@@ -234,6 +238,9 @@ void Viewport::composite()
 	if (renderEffect)
 		scene->requestViewportRender
 		        (p->color->norm, flashColor, p->tone->norm);
+
+	if (p->zoom.x > 0.0f && p->zoom.y > 0.0f && (p->zoom.x != 1.0f || p->zoom.y != 1.0f))
+		scene->requestViewportZoomRender(p->zoom);
 
 	glState.scissorBox.pop();
 	glState.scissorTest.pop();

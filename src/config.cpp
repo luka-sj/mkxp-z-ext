@@ -129,10 +129,12 @@ void Config::read(int argc, char *argv[]) {
     auto optsJ = json::object({
         {"rgssVersion", 0},
         {"debugMode", false},
+        {"consoleAgentPort", 0},
         {"displayFPS", false},
         {"printFPS", false},
         {"winResizable", true},
         {"fullscreen", false},
+        {"hiddenWindow", false},
         {"fixedAspectRatio", true},
         {"smoothScaling", 0},
         {"smoothScalingDown", 0},
@@ -223,6 +225,7 @@ try { exp } catch (...) {}
     
     editor.debug = false;
     editor.battleTest = false;
+    bool hiddenWindowArg = false;
     
     if (argc > 1) {
         if (!strcmp(argv[1], "debug") || !strcmp(argv[1], "test"))
@@ -233,6 +236,9 @@ try { exp } catch (...) {}
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "debug"))
                 launchArgs.push_back(argv[i]);
+            /* Read before the config file so it can't be overridden by it. */
+            if (!strcmp(argv[i], "hidden"))
+                hiddenWindowArg = true;
         }
     }
     
@@ -275,6 +281,7 @@ try { exp } catch (...) {}
     // now RESUME
     
     SET_OPT(debugMode, boolean);
+    SET_OPT(consoleAgentPort, integer);
     SET_OPT(displayFPS, boolean);
     SET_OPT(printFPS, boolean);
     SET_OPT(fullscreen, boolean);
@@ -293,6 +300,8 @@ try { exp } catch (...) {}
     SET_OPT(framebufferScalingFactor, number);
     SET_OPT(atlasScalingFactor, number);
     SET_OPT(winResizable, boolean);
+    SET_OPT(hiddenWindow, boolean);
+    hiddenWindow |= hiddenWindowArg;   // the launch arg wins over the config file
     SET_OPT(vsync, boolean);
     SET_STRINGOPT(windowTitle, windowTitle);
     SET_OPT(fixedFramerate, integer);
