@@ -496,6 +496,11 @@ private:
     void bind() { FBO::bind(rt[dstInd].fbo); }
 };
 
+struct ScreenRegion {
+    IntRect src;
+    IntRect dst;
+};
+
 class ScreenScene : public Scene {
 public:
     ScreenScene(int width, int height) : pp(width, height), viewportShaderTexInited(false),
@@ -509,6 +514,12 @@ public:
     ~ScreenScene() {
         if (viewportShaderTexInited)
             TEXFBO::fini(viewportShaderTex);
+        for (size_t i = 0; i < regionTex.size(); ++i)
+            TEXFBO::fini(regionTex[i]);
+    }
+
+    void setScreenRegions(const std::vector<ScreenRegion> &value) {
+        screenRegions = value;
     }
     
     void composite() {
@@ -533,6 +544,47 @@ public:
             
             brightnessQuad.draw();
         }
+
+        applyScreenRegions();
+    }
+
+    /* Rescales the finished native frame into the requested display regions.
+     * Runs once per frame, so a screen made of stacked viewports scales a
+     * single time instead of once per layer. */
+    void applyScreenRegions() {
+        if (screenRegions.empty())
+            return;
+
+        glState.scissorTest.pushSet(false);
+
+        for (size_t i = 0; i < screenRegions.size(); ++i) {
+            const IntRect &src = screenRegions[i].src;
+            ensureRegionTex(i, src.w, src.h);
+            IntRect texRect(0, 0, src.w, src.h);
+            int sp = GLMeta::blitScaleIsSpecial(regionTex[i], false, texRect, pp.frontBuffer(), src);
+            GLMeta::blitBegin(regionTex[i], false, sp);
+            GLMeta::blitSource(pp.frontBuffer(), sp);
+            GLMeta::blitRectangle(src, texRect, false);
+            GLMeta::blitEnd();
+        }
+
+        glState.clearColor.pushSet(Vec4(0, 0, 0, 1));
+        FBO::bind(pp.frontBuffer().fbo);
+        FBO::clear();
+        glState.clearColor.pop();
+
+        for (size_t i = 0; i < screenRegions.size(); ++i) {
+            const IntRect &src = screenRegions[i].src;
+            const IntRect &dst = screenRegions[i].dst;
+            IntRect texRect(0, 0, src.w, src.h);
+            int sp = GLMeta::blitScaleIsSpecial(pp.frontBuffer(), false, dst, regionTex[i], texRect);
+            GLMeta::blitBegin(pp.frontBuffer(), false, sp);
+            GLMeta::blitSource(regionTex[i], sp);
+            GLMeta::blitRectangle(texRect, dst, false);
+            GLMeta::blitEnd();
+        }
+
+        glState.scissorTest.pop();
     }
     
     void requestViewportRender(const Vec4 &c, const Vec4 &f, const Vec4 &t) {
@@ -760,6 +812,19 @@ public:
     PingPong &getPP() { return pp; }
     
 private:
+    void ensureRegionTex(size_t i, int w, int h) {
+        while (regionTex.size() <= i) {
+            TEXFBO tex;
+            TEXFBO::init(tex);
+            regionTex.push_back(tex);
+        }
+
+        if (regionTex[i].width != w || regionTex[i].height != h) {
+            TEXFBO::allocEmpty(regionTex[i], w, h);
+            TEXFBO::linkFBO(regionTex[i]);
+        }
+    }
+
     void ensureViewportShaderTex(int w, int h) {
         if (!viewportShaderTexInited) {
             TEXFBO::init(viewportShaderTex);
@@ -787,6 +852,10 @@ private:
     bool viewportShaderTexInited;
     int viewportShaderTexW, viewportShaderTexH;
     Quad viewportQuad;
+
+    // Side-by-side display regions and their scratch textures
+    std::vector<ScreenRegion> screenRegions;
+    std::vector<TEXFBO> regionTex;
 };
 
 /* Nanoseconds per second */
@@ -1672,6 +1741,18 @@ void Graphics::resizeScreen(int width, int height) {
     glState.scissorBox.set(IntRect(0, 0, p->scRes.x, p->scRes.y));
     
     shState->eThread().requestWindowResize(width, height);
+}
+
+void Graphics::setScreenRegions(const std::vector<int> &regions) {
+    std::vector<ScreenRegion> parsed;
+    for (size_t i = 0; i + 8 <= regions.size(); i += 8) {
+        ScreenRegion region;
+        region.src = IntRect(regions[i + 0], regions[i + 1], regions[i + 2], regions[i + 3]);
+        region.dst = IntRect(regions[i + 4], regions[i + 5], regions[i + 6], regions[i + 7]);
+        parsed.push_back(region);
+    }
+
+    p->screen.setScreenRegions(parsed);
 }
 
 void Graphics::resizeWindow(int width, int height, bool center) {
