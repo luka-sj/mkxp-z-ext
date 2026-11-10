@@ -40,6 +40,7 @@
 
 // TODO: Replace M_PI with std::numbers::pi once we upgrade to C++20.
 #include <math.h>
+#include <algorithm>
 #ifndef M_PI
 # define M_PI 3.14159265358979323846
 #endif
@@ -162,6 +163,20 @@ struct SpritePrivate
         bool projected;
     } persp;
 
+    bool worldSpace;
+
+    struct
+    {
+        bool active;
+        bool dirty;
+        std::vector<float> records;
+        SimpleQuadArray *qArray;
+        ViewportPerspective cam;
+        Vec2 world;
+        Vec2 pos;
+        IntRect bounds;
+    } mesh;
+
     EtcTemps tmp;
     
     sigslot::connection prepareCon;
@@ -218,12 +233,19 @@ struct SpritePrivate
         persp.hasCornerLifts = false;
         persp.quadActive = false;
         persp.projected = false;
+
+        worldSpace = false;
+        mesh.active = false;
+        mesh.dirty = false;
+        mesh.qArray = 0;
     }
-    
+
     ~SpritePrivate()
     {
         srcRectCon.disconnect();
         prepareCon.disconnect();
+
+        delete mesh.qArray;
 
         bitmapDisposal();
     }
@@ -496,17 +518,23 @@ struct SpritePrivate
         persp.quadActive = false;
 
         const ViewportPerspective *vp = persp.enabled ? activePerspective() : 0;
-        if (!vp || corners.active)
+        bool world = worldSpace && viewport;
+        if ((!vp && !world) || corners.active)
         {
             if (wasQuad && !corners.active)
                 quad.setPosRect(FloatRect(0, 0, adjustedSrcRect.w, adjustedSrcRect.h));
             return;
         }
 
-        const Vec2 &pos = trans.getPosition();
+        Vec2 pos = trans.getPosition();
+        if (world)
+        {
+            pos.x -= viewport->worldScroll().x;
+            pos.y -= viewport->worldScroll().y;
+        }
         const Vec2 &scale = trans.getScale();
 
-        if (persp.hasCornerLifts)
+        if (vp && persp.hasCornerLifts)
         {
             float ax = trans.getOrigin().x + trans.getSrcRectOrigin().x;
             float ay = trans.getOrigin().y + trans.getSrcRectOrigin().y;
@@ -537,8 +565,9 @@ struct SpritePrivate
             quad.setPosRect(FloatRect(0, 0, adjustedSrcRect.w, adjustedSrcRect.h));
 
         float closeLift = persp.hasClosenessLift ? persp.closenessLift : persp.lift;
-        float sx, sy, s;
-        vp->project(pos.x, pos.y, persp.lift, closeLift, persp.boost, sx, sy, s);
+        float sx = pos.x, sy = pos.y, s = 1.0f;
+        if (vp)
+            vp->project(pos.x, pos.y, persp.lift, closeLift, persp.boost, sx, sy, s);
         persp.trans.setPosition(Vec2(sx, sy));
         persp.trans.setScale(Vec2(scale.x * s, scale.y * s));
         persp.trans.setOrigin(trans.getOrigin());
@@ -546,6 +575,106 @@ struct SpritePrivate
         persp.trans.setRotation(trans.getRotation());
         persp.trans.setGlobalOffset(trans.getGlobalOffset());
         persp.projected = true;
+    }
+
+    static bool sameCamera(const ViewportPerspective &a, const ViewportPerspective &b)
+    {
+        return a.active == b.active && a.focalX == b.focalX && a.focalY == b.focalY &&
+               a.strength == b.strength && a.closeness == b.closeness && a.zoom == b.zoom &&
+               a.comp == b.comp && a.scrollX == b.scrollX && a.scrollY == b.scrollY &&
+               a.pitch == b.pitch;
+    }
+
+    void updateMesh()
+    {
+        ViewportPerspective cam;
+        if (persp.enabled && viewport)
+            cam = viewport->perspective();
+        Vec2 world;
+        if (worldSpace && viewport)
+            world = viewport->worldScroll();
+        const Vec2 &pos = trans.getPosition();
+        IntRect bounds(sceneGeo.orig.x, sceneGeo.orig.y, sceneGeo.rect.w, sceneGeo.rect.h);
+
+        if (!mesh.dirty && mesh.qArray && sameCamera(cam, mesh.cam) &&
+            world == mesh.world && pos == mesh.pos &&
+            bounds.x == mesh.bounds.x && bounds.y == mesh.bounds.y &&
+            bounds.w == mesh.bounds.w && bounds.h == mesh.bounds.h)
+            return;
+
+        mesh.dirty = false;
+        mesh.cam = cam;
+        mesh.world = world;
+        mesh.pos = pos;
+        mesh.bounds = bounds;
+
+        if (!mesh.qArray)
+            mesh.qArray = new SimpleQuadArray;
+
+        const size_t stride = Sprite::meshRecordFloats;
+        size_t total = mesh.records.size() / stride;
+        mesh.qArray->resize(total);
+
+        float baseX = pos.x - world.x;
+        float baseY = pos.y - world.y;
+        float minX = bounds.x;
+        float minY = bounds.y;
+        float maxX = bounds.x + bounds.w;
+        float maxY = bounds.y + bounds.h;
+        size_t kept = 0;
+
+        for (size_t i = 0; i < total; ++i)
+        {
+            const float *r = &mesh.records[i * stride];
+            if (r[2] <= 0.0f || r[3] <= 0.0f)
+                continue;
+
+            float x0 = baseX + r[0];
+            float y0 = baseY + r[1];
+            float x1 = x0 + r[2];
+            float y1 = y0 + r[3];
+            Vec2 pts[4];
+            if (cam.active)
+            {
+                float s;
+                cam.project(x0, y0, r[8],  r[8],  1.0f, pts[0].x, pts[0].y, s);
+                cam.project(x1, y0, r[9],  r[9],  1.0f, pts[1].x, pts[1].y, s);
+                cam.project(x1, y1, r[10], r[10], 1.0f, pts[2].x, pts[2].y, s);
+                cam.project(x0, y1, r[11], r[11], 1.0f, pts[3].x, pts[3].y, s);
+            }
+            else
+            {
+                pts[0] = Vec2(x0, y0);
+                pts[1] = Vec2(x1, y0);
+                pts[2] = Vec2(x1, y1);
+                pts[3] = Vec2(x0, y1);
+            }
+
+            float loX = std::min(std::min(pts[0].x, pts[1].x), std::min(pts[2].x, pts[3].x));
+            float hiX = std::max(std::max(pts[0].x, pts[1].x), std::max(pts[2].x, pts[3].x));
+            float loY = std::min(std::min(pts[0].y, pts[1].y), std::min(pts[2].y, pts[3].y));
+            float hiY = std::max(std::max(pts[0].y, pts[1].y), std::max(pts[2].y, pts[3].y));
+            if (hiX < minX || loX > maxX || hiY < minY || loY > maxY)
+                continue;
+
+            SVertex *vert = &mesh.qArray->vertices[kept * 4];
+            Quad::setPosQuad(vert, pts);
+            Quad::setTexRect(vert, texelInset(FloatRect(r[4], r[5], r[6], r[7]), 0.5f, 0.5f));
+            ++kept;
+        }
+
+        mesh.qArray->resize(kept);
+        mesh.qArray->commit();
+    }
+
+    void drawGeometry()
+    {
+        if (mesh.active)
+            mesh.qArray->draw();
+        else if (wave.active && !corners.active && !persp.quadActive)
+            wave.qArray.draw();
+        else
+            quad.draw();
     }
 
     void updateVisibility()
@@ -561,6 +690,12 @@ struct SpritePrivate
         
         if (!opacity)
             return;
+
+        if (mesh.active)
+        {
+            isVisible = mesh.qArray && mesh.qArray->quadCount != 0;
+            return;
+        }
 
         if (corners.active)
         {
@@ -781,7 +916,10 @@ struct SpritePrivate
 
         updateChild();
 
-        updatePerspective();
+        if (mesh.active)
+            updateMesh();
+        else
+            updatePerspective();
 
         updateVisibility();
         
@@ -1166,6 +1304,45 @@ void Sprite::getCornerLifts(float (&out)[4]) const
         out[i] = p->persp.cornerLifts[i];
 }
 
+DEF_ATTR_SIMPLE(Sprite, WorldSpace, bool, p->worldSpace)
+
+void Sprite::setMesh(const float *records, size_t quadCount)
+{
+    guardDisposed();
+
+    p->mesh.records.assign(records, records + quadCount * meshRecordFloats);
+    p->mesh.active = true;
+    p->mesh.dirty = true;
+}
+
+void Sprite::updateMesh(size_t first, const float *records, size_t quadCount)
+{
+    guardDisposed();
+
+    size_t total = p->mesh.records.size() / meshRecordFloats;
+    if (!p->mesh.active || first > total || quadCount > total - first)
+        throw Exception(Exception::ArgumentError, "mesh update out of range");
+
+    std::copy(records, records + quadCount * meshRecordFloats,
+              p->mesh.records.begin() + first * meshRecordFloats);
+    p->mesh.dirty = true;
+}
+
+void Sprite::clearMesh()
+{
+    guardDisposed();
+
+    p->mesh.active = false;
+    p->mesh.records.clear();
+}
+
+size_t Sprite::meshSize() const
+{
+    guardDisposed();
+
+    return p->mesh.active ? p->mesh.records.size() / meshRecordFloats : 0;
+}
+
 void Sprite::initDynAttribs()
 {
     p->realSrcRect = new Rect;
@@ -1328,7 +1505,7 @@ bool Sprite::batchable() const
 		if (p->shaders[i] && !p->shaders[i]->isDisposed())
 			return false;
 
-	return !p->wave.active && p->bushDepth == 0 && !flashing &&
+	return !p->wave.active && !p->mesh.active && p->bushDepth == 0 && !flashing &&
 	       !(p->pattern && !p->pattern->isDisposed());
 }
 
@@ -1347,7 +1524,7 @@ void Sprite::draw()
      * offset only, so the quad's viewport-space corner coordinates map
      * straight through (no position/origin/zoom/rotation). */
     const float *spriteMat;
-    if (p->corners.active || p->persp.quadActive)
+    if (p->mesh.active || p->corners.active || p->persp.quadActive)
         spriteMat = p->offsetTrans.getMatrix();
     else if (p->persp.projected)
         spriteMat = p->persp.trans.getMatrix();
@@ -1421,11 +1598,7 @@ void Sprite::draw()
             glState.blendMode.pushSet(p->blendType);
             p->bitmap->bindTex(*base, false);
 
-            /* Corners win over the wave effect while active */
-            if (p->wave.active && !p->corners.active && !p->persp.quadActive)
-                p->wave.qArray.draw();
-            else
-                p->quad.draw();
+            p->drawGeometry();
 
             glState.blendMode.pop();
         };
@@ -1493,7 +1666,7 @@ void Sprite::draw()
 
     /* Run path: reuse the state a matching predecessor already set. Wave, bush,
      * flash, pattern and smooth scaling all need per-sprite state, so they opt out. */
-    if (!p->wave.active && p->bushDepth == 0 && !flashing &&
+    if (!p->wave.active && !p->mesh.active && p->bushDepth == 0 && !flashing &&
         !(p->pattern && !p->pattern->isDisposed()) &&
         scalingMethod == NearestNeighbor)
     {
@@ -1652,11 +1825,7 @@ void Sprite::draw()
 
     TEX::setSmooth(scalingMethod == Bilinear);
 
-    /* Corners win over the wave effect while active */
-    if (p->wave.active && !p->corners.active && !p->persp.quadActive)
-        p->wave.qArray.draw();
-    else
-        p->quad.draw();
+    p->drawGeometry();
 
     TEX::setSmooth(false);
 

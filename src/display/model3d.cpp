@@ -332,10 +332,6 @@ struct Model3DPrivate
 	float bboxCenter[3];
 	float bboxRadius;
 
-	/* Depth renderbuffer (attached to Bitmap FBO at render time) */
-	GLuint depthRbo;
-	int depthRboW, depthRboH;
-
 	/* Custom shader (user-provided fragment, compiled with 3D vert) */
 	CustomShader *customShader;
 	GLuint customProgram, customVert, customFrag;
@@ -358,7 +354,6 @@ struct Model3DPrivate
 	      vbo(0), vertexCount(0),
 	      program(0), vertShader(0), fragShader(0), whiteTex(0),
 	      bboxRadius(1.0f),
-	      depthRbo(0), depthRboW(0), depthRboH(0),
 	      customShader(0), customProgram(0), customVert(0), customFrag(0)
 	{
 		bboxMin[0] = bboxMin[1] = bboxMin[2] = 0;
@@ -388,26 +383,32 @@ struct Model3DPrivate
 			gl.DeleteShader(customVert);
 		if (customFrag)
 			gl.DeleteShader(customFrag);
-
-		if (depthRbo)
-			gl.DeleteRenderbuffers(1, &depthRbo);
-	}
-
-	void ensureDepthRbo(int w, int h)
-	{
-		if (depthRboW == w && depthRboH == h && depthRbo)
-			return;
-
-		if (depthRbo)
-			gl.DeleteRenderbuffers(1, &depthRbo);
-
-		gl.GenRenderbuffers(1, &depthRbo);
-		gl.BindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
-		depthRboW = w;
-		depthRboH = h;
 	}
 };
+
+static std::map<std::pair<int, int>, GLuint> depthPool;
+
+static GLuint sharedDepthRbo(int w, int h)
+{
+	std::pair<int, int> key(w, h);
+	std::map<std::pair<int, int>, GLuint>::iterator it = depthPool.find(key);
+	if (it != depthPool.end())
+		return it->second;
+
+	if (depthPool.size() >= 16)
+	{
+		for (it = depthPool.begin(); it != depthPool.end(); ++it)
+			gl.DeleteRenderbuffers(1, &it->second);
+		depthPool.clear();
+	}
+
+	GLuint rbo;
+	gl.GenRenderbuffers(1, &rbo);
+	gl.BindRenderbuffer(GL_RENDERBUFFER, rbo);
+	gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+	depthPool[key] = rbo;
+	return rbo;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Shader compilation helper                                         */
@@ -1047,18 +1048,42 @@ Bitmap *Model3D::render(int width, int height)
 
 	/* ---- Create result Bitmap and render directly into its FBO ---- */
 	Bitmap *result = new Bitmap(width, height);
-	TEXFBO &resultTex = result->getGLTypes();
+	renderInto(result->getGLTypes(), width, height);
 
+	return result;
+}
+
+Bitmap *Model3D::renderTo(Bitmap *target, int width, int height)
+{
+	guardDisposed();
+	target->ensureNonMega();
+	target->ensureNonAnimated();
+
+	if (width <= 0 || height <= 0 ||
+	    width > target->width() || height > target->height())
+		throw Exception(Exception::RGSSError,
+		                "Model3D::render_to: invalid dimensions %d x %d",
+		                width, height);
+
+	target->clear();
+	renderInto(target->getGLTypes(), width, height);
+	target->taintArea(IntRect(0, 0, width, height));
+
+	return target;
+}
+
+void Model3D::renderInto(TEXFBO &target, int width, int height)
+{
 	/* ---- Save GL state ---- */
 	glState.viewport.pushSet(IntRect(0, 0, width, height));
 	glState.scissorTest.pushSet(false);
 	FBO::ID savedFBO = FBO::boundFramebufferID;
 
 	/* Attach a depth renderbuffer to the Bitmap's FBO */
-	p->ensureDepthRbo(width, height);
-	FBO::bind(resultTex.fbo);
+	GLuint depthRbo = sharedDepthRbo(target.width, target.height);
+	FBO::bind(target.fbo);
 	gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-	                           GL_RENDERBUFFER, p->depthRbo);
+	                           GL_RENDERBUFFER, depthRbo);
 
 	/* ---- 3D render state ---- */
 	gl.Viewport(0, 0, width, height);
@@ -1259,8 +1284,6 @@ Bitmap *Model3D::render(int width, int height)
 	glState.viewport.pop();
 	glState.viewport.refresh();
 	glState.clearColor.refresh();
-
-	return result;
 }
 
 void Model3D::releaseResources()

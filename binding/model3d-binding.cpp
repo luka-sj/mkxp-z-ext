@@ -69,6 +69,20 @@ RB_METHOD_GUARD(model3dRender) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(model3dRenderTo) {
+    VALUE bitmapObj;
+    int width, height;
+    rb_get_args(argc, argv, "oii", &bitmapObj, &width, &height RB_ARG_END);
+
+    Model3D *m = getPrivateData<Model3D>(self);
+    Bitmap *b = getPrivateDataCheck<Bitmap>(bitmapObj, BitmapType);
+
+    GFX_GUARD_EXC(m->renderTo(b, width, height););
+
+    return bitmapObj;
+}
+RB_METHOD_GUARD_END
+
 RB_METHOD_GUARD(model3dGetShader) {
     RB_UNUSED_PARAM;
     Model3D *m = getPrivateData<Model3D>(self);
@@ -164,6 +178,7 @@ void model3dBindingInit() {
 
     _rb_define_method(klass, "initialize", model3dInitialize);
     _rb_define_method(klass, "render", model3dRender);
+    _rb_define_method(klass, "render_to", model3dRenderTo);
     _rb_define_method(klass, "shader", model3dGetShader);
     _rb_define_method(klass, "shader=", model3dSetShader);
 
