@@ -25,6 +25,7 @@
 class Bitmap;
 class CustomShader;
 struct Model3DPrivate;
+struct TEXFBO;
 
 class Model3D : public Disposable
 {
@@ -99,8 +100,10 @@ public:
 
 	/* Render the model to a Bitmap */
 	Bitmap *render(int width, int height);
+	Bitmap *renderTo(Bitmap *target, int width, int height);
 
 private:
+	void renderInto(TEXFBO &target, int width, int height);
 	void releaseResources();
 	const char *klassName() const { return "Model3D"; }
 

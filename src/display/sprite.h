@@ -99,6 +99,15 @@ public:
 	bool hasCornerLifts() const;
 	void getCornerLifts(float (&out)[4]) const;
 
+	DECL_ATTR( WorldSpace, bool )
+
+	/* Mesh records are 12 floats each: x y w h, src x y w h, lifts TL TR BR BL. */
+	static const int meshRecordFloats = 12;
+	void setMesh(const float *records, size_t quadCount);
+	void updateMesh(size_t first, const float *records, size_t quadCount);
+	void clearMesh();
+	size_t meshSize() const;
+
 	void initDynAttribs();
 
 private:

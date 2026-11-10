@@ -44,6 +44,7 @@ struct ViewportPerspective
 	float comp = 0.0f;
 	float scrollX = 0.0f;
 	float scrollY = 0.0f;
+	float pitch = 1.0f;
 
 	void project(float flatX, float flatY, float lift, float closeLift,
 	             float boost, float &outX, float &outY, float &outS) const
@@ -56,7 +57,7 @@ struct ViewportPerspective
 			denom = 0.03f;
 		float s = (zoom / denom) * boost;
 		outX = focalX + (fx - focalX) * s;
-		outY = focalY + (fy - focalY) * s - lift * s + comp;
+		outY = focalY + (fy - focalY) * s * pitch - (lift - closeLift * closeness) * s + comp;
 		outS = s;
 	}
 };
@@ -84,10 +85,14 @@ public:
 	const ViewportPerspective &perspective() const { return persp; }
 	void setPerspective(const ViewportPerspective &value) { persp = value; }
 
+	const Vec2 &worldScroll() const { return world; }
+	void setWorldScroll(const Vec2 &value) { world = value; }
+
 	void initDynAttribs();
 
 private:
 	ViewportPerspective persp;
+	Vec2 world;
 
 	void initViewport(int x, int y, int width, int height);
 	void geometryChanged();

@@ -29,6 +29,9 @@
 #include "viewportelement-binding.h"
 #include "display/customshader.h"
 
+#include <string.h>
+#include <vector>
+
 #if RAPI_FULL > 187
 DEF_TYPE(Sprite);
 #else
@@ -286,6 +289,76 @@ RB_METHOD_GUARD(spriteSetCorners) {
 }
 RB_METHOD_GUARD_END
 
+DEF_PROP_B(Sprite, WorldSpace)
+
+static size_t meshQuadCount(VALUE data) {
+    if (!RB_TYPE_P(data, RUBY_T_STRING))
+        rb_raise(rb_eTypeError, "Expected a packed String of mesh records");
+
+    size_t recordBytes = Sprite::meshRecordFloats * sizeof(float);
+    size_t bytes = (size_t) RSTRING_LEN(data);
+    if (bytes % recordBytes != 0)
+        rb_raise(rb_eArgError, "mesh data must hold 12 floats per quad");
+
+    return bytes / recordBytes;
+}
+
+RB_METHOD_GUARD(spriteMeshSet) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE data;
+    rb_get_args(argc, argv, "o", &data RB_ARG_END);
+
+    size_t quads = meshQuadCount(data);
+    std::vector<float> records(quads * Sprite::meshRecordFloats);
+    if (quads)
+        memcpy(&records[0], RSTRING_PTR(data), records.size() * sizeof(float));
+
+    GFX_GUARD_EXC(s->setMesh(quads ? &records[0] : 0, quads);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteMeshUpdate) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    int first;
+    VALUE data;
+    rb_get_args(argc, argv, "io", &first, &data RB_ARG_END);
+
+    if (first < 0)
+        rb_raise(rb_eArgError, "mesh index must not be negative");
+
+    size_t quads = meshQuadCount(data);
+    std::vector<float> records(quads * Sprite::meshRecordFloats);
+    if (quads)
+        memcpy(&records[0], RSTRING_PTR(data), records.size() * sizeof(float));
+
+    GFX_GUARD_EXC(s->updateMesh((size_t) first, quads ? &records[0] : 0, quads);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteMeshClear) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    GFX_GUARD_EXC(s->clearMesh();)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteMeshSize) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    return INT2NUM((int) s->meshSize());
+}
+RB_METHOD_GUARD_END
+
 void spriteBindingInit() {
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
@@ -351,4 +424,10 @@ void spriteBindingInit() {
     _rb_define_method(klass, "closeness_lift=", spriteSetClosenessLift);
     _rb_define_method(klass, "corner_lifts", spriteGetCornerLifts);
     _rb_define_method(klass, "corner_lifts=", spriteSetCornerLifts);
+
+    INIT_PROP_BIND(Sprite, WorldSpace, "world_space");
+    _rb_define_method(klass, "mesh_set", spriteMeshSet);
+    _rb_define_method(klass, "mesh_update", spriteMeshUpdate);
+    _rb_define_method(klass, "mesh_clear", spriteMeshClear);
+    _rb_define_method(klass, "mesh_size", spriteMeshSize);
 }
