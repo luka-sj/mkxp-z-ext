@@ -29,6 +29,9 @@
 #include "viewportelement-binding.h"
 #include "display/customshader.h"
 
+#include <string.h>
+#include <vector>
+
 #if RAPI_FULL > 187
 DEF_TYPE(Sprite);
 #else
@@ -59,10 +62,10 @@ DEF_GFX_PROP_OBJ_VAL(Sprite, Rect, SrcRect, "src_rect")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Color, Color, "color")
 DEF_GFX_PROP_OBJ_VAL(Sprite, Tone, Tone, "tone")
 
-DEF_GFX_PROP_I(Sprite, X)
-DEF_GFX_PROP_I(Sprite, Y)
-DEF_GFX_PROP_I(Sprite, OX)
-DEF_GFX_PROP_I(Sprite, OY)
+DEF_GFX_PROP_F(Sprite, X)
+DEF_GFX_PROP_F(Sprite, Y)
+DEF_GFX_PROP_F(Sprite, OX)
+DEF_GFX_PROP_F(Sprite, OY)
 DEF_GFX_PROP_I(Sprite, BushDepth)
 DEF_GFX_PROP_I(Sprite, BushOpacity)
 DEF_GFX_PROP_I(Sprite, Opacity)
@@ -170,6 +173,83 @@ RB_METHOD(spriteGetCorners) {
     return rb_iv_get(self, "@corners");
 }
 
+DEF_PROP_B(Sprite, Perspective)
+DEF_PROP_F(Sprite, Lift)
+DEF_PROP_F(Sprite, ScaleBoost)
+
+RB_METHOD_GUARD(spriteGetClosenessLift) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    return s->hasClosenessLift() ? rb_float_new(s->getClosenessLift()) : Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteSetClosenessLift) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE arg;
+    rb_get_args(argc, argv, "o", &arg RB_ARG_END);
+
+    if (NIL_P(arg)) {
+        s->clearClosenessLift();
+        return Qnil;
+    }
+
+    if (!rb_obj_is_kind_of(arg, rb_cNumeric))
+        rb_raise(rb_eTypeError, "Expected Numeric or nil for closeness_lift");
+
+    s->setClosenessLift(NUM2DBL(arg));
+    return arg;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteGetCornerLifts) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    if (!s->hasCornerLifts())
+        return Qnil;
+
+    float lifts[4];
+    s->getCornerLifts(lifts);
+    VALUE ary = rb_ary_new2(4);
+    for (int i = 0; i < 4; ++i)
+        rb_ary_push(ary, rb_float_new(lifts[i]));
+    return ary;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteSetCornerLifts) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE arg;
+    rb_get_args(argc, argv, "o", &arg RB_ARG_END);
+
+    if (NIL_P(arg)) {
+        s->clearCornerLifts();
+        return Qnil;
+    }
+
+    if (!RB_TYPE_P(arg, RUBY_T_ARRAY))
+        rb_raise(rb_eTypeError, "Expected Array or nil for corner_lifts");
+
+    if (RARRAY_LEN(arg) != 4)
+        rb_raise(rb_eArgError, "corner_lifts expects a 4-element Array [tl,tr,br,bl]");
+
+    float lifts[4];
+    for (int i = 0; i < 4; ++i) {
+        VALUE e = rb_ary_entry(arg, i);
+        if (!rb_obj_is_kind_of(e, rb_cNumeric))
+            rb_raise(rb_eTypeError, "corner_lifts elements must be Numeric");
+        lifts[i] = (float) NUM2DBL(e);
+    }
+
+    s->setCornerLifts(lifts);
+    return arg;
+}
+RB_METHOD_GUARD_END
+
 RB_METHOD_GUARD(spriteSetCorners) {
     Sprite *s = getPrivateData<Sprite>(self);
 
@@ -206,6 +286,76 @@ RB_METHOD_GUARD(spriteSetCorners) {
     rb_iv_set(self, "@corners", rb_ary_dup(arg));
 
     return arg;
+}
+RB_METHOD_GUARD_END
+
+DEF_PROP_B(Sprite, WorldSpace)
+
+static size_t meshQuadCount(VALUE data) {
+    if (!RB_TYPE_P(data, RUBY_T_STRING))
+        rb_raise(rb_eTypeError, "Expected a packed String of mesh records");
+
+    size_t recordBytes = Sprite::meshRecordFloats * sizeof(float);
+    size_t bytes = (size_t) RSTRING_LEN(data);
+    if (bytes % recordBytes != 0)
+        rb_raise(rb_eArgError, "mesh data must hold 12 floats per quad");
+
+    return bytes / recordBytes;
+}
+
+RB_METHOD_GUARD(spriteMeshSet) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE data;
+    rb_get_args(argc, argv, "o", &data RB_ARG_END);
+
+    size_t quads = meshQuadCount(data);
+    std::vector<float> records(quads * Sprite::meshRecordFloats);
+    if (quads)
+        memcpy(&records[0], RSTRING_PTR(data), records.size() * sizeof(float));
+
+    GFX_GUARD_EXC(s->setMesh(quads ? &records[0] : 0, quads);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteMeshUpdate) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    int first;
+    VALUE data;
+    rb_get_args(argc, argv, "io", &first, &data RB_ARG_END);
+
+    if (first < 0)
+        rb_raise(rb_eArgError, "mesh index must not be negative");
+
+    size_t quads = meshQuadCount(data);
+    std::vector<float> records(quads * Sprite::meshRecordFloats);
+    if (quads)
+        memcpy(&records[0], RSTRING_PTR(data), records.size() * sizeof(float));
+
+    GFX_GUARD_EXC(s->updateMesh((size_t) first, quads ? &records[0] : 0, quads);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteMeshClear) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    GFX_GUARD_EXC(s->clearMesh();)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteMeshSize) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    return INT2NUM((int) s->meshSize());
 }
 RB_METHOD_GUARD_END
 
@@ -266,4 +416,18 @@ void spriteBindingInit() {
 
     _rb_define_method(klass, "corners", spriteGetCorners);
     _rb_define_method(klass, "corners=", spriteSetCorners);
+
+    INIT_PROP_BIND(Sprite, Perspective, "perspective");
+    INIT_PROP_BIND(Sprite, Lift, "lift");
+    INIT_PROP_BIND(Sprite, ScaleBoost, "scale_boost");
+    _rb_define_method(klass, "closeness_lift", spriteGetClosenessLift);
+    _rb_define_method(klass, "closeness_lift=", spriteSetClosenessLift);
+    _rb_define_method(klass, "corner_lifts", spriteGetCornerLifts);
+    _rb_define_method(klass, "corner_lifts=", spriteSetCornerLifts);
+
+    INIT_PROP_BIND(Sprite, WorldSpace, "world_space");
+    _rb_define_method(klass, "mesh_set", spriteMeshSet);
+    _rb_define_method(klass, "mesh_update", spriteMeshUpdate);
+    _rb_define_method(klass, "mesh_clear", spriteMeshClear);
+    _rb_define_method(klass, "mesh_size", spriteMeshSize);
 }

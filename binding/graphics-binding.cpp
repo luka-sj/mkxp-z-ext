@@ -289,6 +289,33 @@ RB_METHOD(graphicsResizeScreen)
     return Qnil;
 }
 
+RB_METHOD(graphicsSetScreenRegions)
+{
+    RB_UNUSED_PARAM;
+
+    VALUE arr;
+    rb_get_args(argc, argv, "o", &arr RB_ARG_END);
+
+    std::vector<int> flat;
+
+    if (RB_TYPE_P(arr, RUBY_T_ARRAY)) {
+        long count = RARRAY_LEN(arr);
+        for (long i = 0; i < count; ++i) {
+            VALUE region = rb_ary_entry(arr, i);
+            if (!RB_TYPE_P(region, RUBY_T_ARRAY) || RARRAY_LEN(region) < 8)
+                rb_raise(rb_eArgError, "each screen region needs eight integers");
+            for (long j = 0; j < 8; ++j)
+                flat.push_back(NUM2INT(rb_ary_entry(region, j)));
+        }
+    }
+
+    GFX_LOCK;
+    shState->graphics().setScreenRegions(flat);
+    GFX_UNLOCK;
+
+    return Qnil;
+}
+
 RB_METHOD(graphicsResizeWindow)
 {
     RB_UNUSED_PARAM;
@@ -401,6 +428,8 @@ DEF_GRA_PROP_B(Fullscreen)
 DEF_GRA_PROP_B(ShowCursor)
 DEF_GRA_PROP_F(Scale)
 DEF_GRA_PROP_B(Frameskip)
+DEF_GRA_PROP_I(FastForward)
+DEF_GRA_PROP_F(ShaderTimeScale)
 DEF_GRA_PROP_B(FixedAspectRatio)
 DEF_GRA_PROP_I(SmoothScaling)
 DEF_GRA_PROP_B(IntegerScaling)
@@ -439,6 +468,7 @@ void graphicsBindingInit()
     _rb_define_module_function(module, "fadein", graphicsFadein);
     _rb_define_module_function(module, "snap_to_bitmap", graphicsSnapToBitmap);
     _rb_define_module_function(module, "resize_screen", graphicsResizeScreen);
+    _rb_define_module_function(module, "set_screen_regions", graphicsSetScreenRegions);
     _rb_define_module_function(module, "resize_window", graphicsResizeWindow);
     _rb_define_module_function(module, "center", graphicsCenter);
         
@@ -455,6 +485,8 @@ void graphicsBindingInit()
     INIT_GRA_PROP_BIND( ShowCursor,       "show_cursor"        );
     INIT_GRA_PROP_BIND( Scale,            "scale"              );
     INIT_GRA_PROP_BIND( Frameskip,        "frameskip"          );
+    INIT_GRA_PROP_BIND( FastForward,      "fast_forward"       );
+    INIT_GRA_PROP_BIND( ShaderTimeScale,  "shader_time_scale"  );
     INIT_GRA_PROP_BIND( FixedAspectRatio, "fixed_aspect_ratio" );
     INIT_GRA_PROP_BIND( SmoothScaling,    "smooth_scaling"     );
     INIT_GRA_PROP_BIND( IntegerScaling,   "integer_scaling"    );

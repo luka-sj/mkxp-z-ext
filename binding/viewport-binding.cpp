@@ -80,6 +80,8 @@ DEF_GFX_PROP_OBJ_REF(Viewport, CustomShader, Shader, "@shader")
 
 DEF_GFX_PROP_I(Viewport, OX)
 DEF_GFX_PROP_I(Viewport, OY)
+DEF_GFX_PROP_F(Viewport, ZoomX)
+DEF_GFX_PROP_F(Viewport, ZoomY)
 
 RB_METHOD(viewportGetShaders) {
     RB_UNUSED_PARAM;
@@ -134,6 +136,72 @@ RB_METHOD_GUARD(viewportSetShaders) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(viewportPerspectiveSet) {
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    double focalX, focalY, strength, closeness, zoom, comp, scrollX, scrollY;
+    double pitch = 1.0;
+    rb_get_args(argc, argv, "ffffffff|f", &focalX, &focalY, &strength,
+                &closeness, &zoom, &comp, &scrollX, &scrollY, &pitch RB_ARG_END);
+
+    ViewportPerspective persp;
+    persp.active = true;
+    persp.focalX = (float) focalX;
+    persp.focalY = (float) focalY;
+    persp.strength = (float) strength;
+    persp.closeness = (float) closeness;
+    persp.zoom = (float) zoom;
+    persp.comp = (float) comp;
+    persp.scrollX = (float) scrollX;
+    persp.scrollY = (float) scrollY;
+    persp.pitch = (float) pitch;
+    v->setPerspective(persp);
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportPerspectiveClear) {
+    RB_UNUSED_PARAM;
+
+    Viewport *v = getPrivateData<Viewport>(self);
+    v->setPerspective(ViewportPerspective());
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportPerspectiveActive) {
+    RB_UNUSED_PARAM;
+
+    Viewport *v = getPrivateData<Viewport>(self);
+    return rb_bool_new(v->perspective().active);
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportWorldScrollSet) {
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    double x, y;
+    rb_get_args(argc, argv, "ff", &x, &y RB_ARG_END);
+    v->setWorldScroll(Vec2((float) x, (float) y));
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportWorldScroll) {
+    RB_UNUSED_PARAM;
+
+    Viewport *v = getPrivateData<Viewport>(self);
+    const Vec2 &world = v->worldScroll();
+    VALUE ary = rb_ary_new2(2);
+    rb_ary_push(ary, rb_float_new(world.x));
+    rb_ary_push(ary, rb_float_new(world.y));
+    return ary;
+}
+RB_METHOD_GUARD_END
+
 void viewportBindingInit() {
     VALUE klass = rb_define_class("Viewport", rb_cObject);
 #if RAPI_FULL > 187
@@ -151,10 +219,19 @@ void viewportBindingInit() {
     INIT_PROP_BIND(Viewport, Rect, "rect");
     INIT_PROP_BIND(Viewport, OX, "ox");
     INIT_PROP_BIND(Viewport, OY, "oy");
+    INIT_PROP_BIND(Viewport, ZoomX, "zoom_x");
+    INIT_PROP_BIND(Viewport, ZoomY, "zoom_y");
     INIT_PROP_BIND(Viewport, Color, "color");
     INIT_PROP_BIND(Viewport, Tone, "tone");
     INIT_PROP_BIND(Viewport, Shader, "shader");
 
     _rb_define_method(klass, "shaders", viewportGetShaders);
     _rb_define_method(klass, "shaders=", viewportSetShaders);
+
+    _rb_define_method(klass, "perspective_set", viewportPerspectiveSet);
+    _rb_define_method(klass, "perspective_clear", viewportPerspectiveClear);
+    _rb_define_method(klass, "perspective_active?", viewportPerspectiveActive);
+    _rb_define_method(klass, "world_scroll_set", viewportWorldScrollSet);
+    _rb_define_method(klass, "world_scroll", viewportWorldScroll);
+    rb_define_const(klass, "PERSPECTIVE_LAW", INT2FIX(3));
 }

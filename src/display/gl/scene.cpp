@@ -21,6 +21,7 @@
 
 #include "scene.h"
 #include "sharedstate.h"
+#include "spritebatch.h"
 
 Scene::Scene()
 {}
@@ -96,9 +97,16 @@ void Scene::composite()
 	{
 		SceneElement *e = iter->data;
 
-		if (e->visible)
-			e->draw();
+		if (!e->visible)
+			continue;
+
+		if (!e->batchable())
+			SpriteBatch::flush();
+
+		e->draw();
 	}
+
+	SpriteBatch::flush();
 }
 
 

@@ -50,10 +50,10 @@ public:
 
 	DECL_ATTR( Bitmap,      Bitmap* )
 	DECL_ATTR( SrcRect,     Rect&   )
-	DECL_ATTR( X,           int     )
-	DECL_ATTR( Y,           int     )
-	DECL_ATTR( OX,          int     )
-	DECL_ATTR( OY,          int     )
+	DECL_ATTR( X,           float   )
+	DECL_ATTR( Y,           float   )
+	DECL_ATTR( OX,          float   )
+	DECL_ATTR( OY,          float   )
 	DECL_ATTR( ZoomX,       float   )
 	DECL_ATTR( ZoomY,       float   )
 	DECL_ATTR( Angle,       float   )
@@ -85,12 +85,36 @@ public:
 	void setCorners(const Vec2 (&pts)[4]);
 	void clearCorners();
 
+	/* Inputs for the viewport perspective transform; sprites take part
+	 * only while perspective is set true. */
+	DECL_ATTR( Perspective, bool  )
+	DECL_ATTR( Lift,        float )
+	DECL_ATTR( ScaleBoost,  float )
+	void setClosenessLift(float value);
+	void clearClosenessLift();
+	bool hasClosenessLift() const;
+	float getClosenessLift() const;
+	void setCornerLifts(const float (&lifts)[4]);
+	void clearCornerLifts();
+	bool hasCornerLifts() const;
+	void getCornerLifts(float (&out)[4]) const;
+
+	DECL_ATTR( WorldSpace, bool )
+
+	/* Mesh records are 12 floats each: x y w h, src x y w h, lifts TL TR BR BL. */
+	static const int meshRecordFloats = 12;
+	void setMesh(const float *records, size_t quadCount);
+	void updateMesh(size_t first, const float *records, size_t quadCount);
+	void clearMesh();
+	size_t meshSize() const;
+
 	void initDynAttribs();
 
 private:
 	SpritePrivate *p;
 
 	void draw();
+	bool batchable() const;
 	void onGeometryChange(const Scene::Geometry &);
 
 	void releaseResources();

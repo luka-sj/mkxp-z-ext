@@ -32,6 +32,8 @@ embedded_shaders = [
     'kglSubtract.frag',
     'kglShadowH.frag',
     'kglShadowV.frag',
+    'model3d.vert',
+    'model3d.frag'
 ]
 
 # xBRZ shader is GPLv3.

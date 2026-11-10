@@ -45,6 +45,10 @@ typedef void (APIENTRYP _PFNGLBLENDFUNCPROC) (GLenum sfactor, GLenum dfactor);
 typedef void (APIENTRYP _PFNGLBLENDFUNCSEPARATEPROC) (GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha);
 typedef void (APIENTRYP _PFNGLBLENDEQUATIONPROC) (GLenum mode);
 typedef void (APIENTRYP _PFNGLDRAWELEMENTSPROC) (GLenum mode, GLsizei count, GLenum type, const GLvoid *indices);
+typedef void (APIENTRYP _PFNGLDRAWARRAYSPROC) (GLenum mode, GLint first, GLsizei count);
+typedef void (APIENTRYP _PFNGLDEPTHFUNCPROC) (GLenum func);
+typedef void (APIENTRYP _PFNGLDEPTHMASKPROC) (GLboolean flag);
+typedef void (APIENTRYP _PFNGLCULLFACEPROC) (GLenum mode);
 
 /* Texture */
 typedef void (APIENTRYP _PFNGLGENTEXTURESPROC) (GLsizei n, GLuint *textures);
@@ -109,6 +113,13 @@ typedef void (APIENTRYP _PFNGLBINDFRAMEBUFFERPROC) (GLenum target, GLuint frameb
 typedef void (APIENTRYP _PFNGLFRAMEBUFFERTEXTURE2DPROC) (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
 typedef void (APIENTRYP _PFNGLBLITFRAMEBUFFERPROC) (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
 
+/* Renderbuffer object */
+typedef void (APIENTRYP _PFNGLGENRENDERBUFFERSPROC) (GLsizei n, GLuint *renderbuffers);
+typedef void (APIENTRYP _PFNGLDELETERENDERBUFFERSPROC) (GLsizei n, const GLuint *renderbuffers);
+typedef void (APIENTRYP _PFNGLBINDRENDERBUFFERPROC) (GLenum target, GLuint renderbuffer);
+typedef void (APIENTRYP _PFNGLRENDERBUFFERSTORAGEPROC) (GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+typedef void (APIENTRYP _PFNGLFRAMEBUFFERRENDERBUFFERPROC) (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+
 /* Vertex array object */
 typedef void (APIENTRYP _PFNGLGENVERTEXARRAYSPROC) (GLsizei n, GLuint* arrays);
 typedef void (APIENTRYP _PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint* arrays);
@@ -143,6 +154,10 @@ typedef void (APIENTRYP _PFNGLRELEASESHADERCOMPILERPROC) (void);
 	GL_FUN(BlendFuncSeparate, _PFNGLBLENDFUNCSEPARATEPROC) \
 	GL_FUN(BlendEquation, _PFNGLBLENDEQUATIONPROC) \
 	GL_FUN(DrawElements, _PFNGLDRAWELEMENTSPROC) \
+	GL_FUN(DrawArrays, _PFNGLDRAWARRAYSPROC) \
+	GL_FUN(DepthFunc, _PFNGLDEPTHFUNCPROC) \
+	GL_FUN(DepthMask, _PFNGLDEPTHMASKPROC) \
+	GL_FUN(CullFace, _PFNGLCULLFACEPROC) \
 	/* Texture */ \
 	GL_FUN(GenTextures, _PFNGLGENTEXTURESPROC) \
 	GL_FUN(DeleteTextures, _PFNGLDELETETEXTURESPROC) \
@@ -197,7 +212,13 @@ typedef void (APIENTRYP _PFNGLRELEASESHADERCOMPILERPROC) (void);
 	GL_FUN(GenFramebuffers, _PFNGLGENFRAMEBUFFERSPROC) \
 	GL_FUN(DeleteFramebuffers, _PFNGLDELETEFRAMEBUFFERSPROC) \
 	GL_FUN(BindFramebuffer, _PFNGLBINDFRAMEBUFFERPROC) \
-	GL_FUN(FramebufferTexture2D, _PFNGLFRAMEBUFFERTEXTURE2DPROC)
+	GL_FUN(FramebufferTexture2D, _PFNGLFRAMEBUFFERTEXTURE2DPROC) \
+	/* Renderbuffer object */ \
+	GL_FUN(GenRenderbuffers, _PFNGLGENRENDERBUFFERSPROC) \
+	GL_FUN(DeleteRenderbuffers, _PFNGLDELETERENDERBUFFERSPROC) \
+	GL_FUN(BindRenderbuffer, _PFNGLBINDRENDERBUFFERPROC) \
+	GL_FUN(RenderbufferStorage, _PFNGLRENDERBUFFERSTORAGEPROC) \
+	GL_FUN(FramebufferRenderbuffer, _PFNGLFRAMEBUFFERRENDERBUFFERPROC)
 
 #define GL_FBO_BLIT_FUN \
 	GL_FUN(BlitFramebuffer, _PFNGLBLITFRAMEBUFFERPROC)

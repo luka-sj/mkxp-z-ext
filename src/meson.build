@@ -87,7 +87,7 @@ global_args += '-DMKXPZ_ALCDEVICE=' + alcdev_struct
 global_include_dirs += include_directories('.',
     'audio',
     'crypto',
-    'display', 'display/gl', 'display/libnsgif', 'display/libnsgif/utils',
+    'display', 'display/gl', 'display/libnsgif', 'display/libnsgif/utils', 'display/tinyobjloader',
     'etc',
     'filesystem', 'filesystem/ghc',
     'input',
@@ -137,6 +137,8 @@ main_source = files(
     'display/autotilesvx.cpp',
     'display/bitmap.cpp',
     'display/customshader.cpp',
+    'display/model3d.cpp',
+    'display/tinyobjloader/tiny_obj_loader.cpp',
     'display/font.cpp',
     'display/graphics.cpp',
     'display/plane.cpp',
@@ -164,7 +166,8 @@ main_source = files(
 
     'util/iniconfig.cpp',
     'util/win-consoleutils.cpp',
-    
+    'util/console-input.cpp',
+
     'etc/etc.cpp',
     'etc/table.cpp',
 

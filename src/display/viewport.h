@@ -31,6 +31,37 @@
 
 struct ViewportPrivate;
 
+/* Camera params for the draw-time perspective transform, mirroring the
+ * project-side Heightfield::Perspective law. */
+struct ViewportPerspective
+{
+	bool active = false;
+	float focalX = 0.0f;
+	float focalY = 0.0f;
+	float strength = 0.0f;
+	float closeness = 1.0f;
+	float zoom = 1.0f;
+	float comp = 0.0f;
+	float scrollX = 0.0f;
+	float scrollY = 0.0f;
+	float pitch = 1.0f;
+
+	void project(float flatX, float flatY, float lift, float closeLift,
+	             float boost, float &outX, float &outY, float &outS) const
+	{
+		float fx = flatX - scrollX;
+		float fy = flatY - scrollY;
+		float distance = (focalY - fy) - closeLift * closeness;
+		float denom = 1.0f + strength * distance;
+		if (denom < 0.03f)
+			denom = 0.03f;
+		float s = (zoom / denom) * boost;
+		outX = focalX + (fx - focalX) * s;
+		outY = focalY + (fy - focalY) * s * pitch - (lift - closeLift * closeness) * s + comp;
+		outS = s;
+	}
+};
+
 class Viewport : public Scene, public SceneElement, public Flashable, public Disposable
 {
 public:
@@ -48,10 +79,21 @@ public:
 	DECL_ATTR( Tone,  Tone&  )
 	DECL_ATTR( Shader, class CustomShader* )
 	DECL_ATTR( Shaders, std::vector<class CustomShader*>& )
+	DECL_ATTR( ZoomX, float )
+	DECL_ATTR( ZoomY, float )
+
+	const ViewportPerspective &perspective() const { return persp; }
+	void setPerspective(const ViewportPerspective &value) { persp = value; }
+
+	const Vec2 &worldScroll() const { return world; }
+	void setWorldScroll(const Vec2 &value) { world = value; }
 
 	void initDynAttribs();
 
 private:
+	ViewportPerspective persp;
+	Vec2 world;
+
 	void initViewport(int x, int y, int width, int height);
 	void geometryChanged();
 
