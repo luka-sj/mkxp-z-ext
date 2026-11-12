@@ -194,6 +194,7 @@ struct SpritePrivate
     } wmesh;
 
     int depthMode;
+    float depthBias;
     float worldMat[16];
 
     struct
@@ -272,6 +273,7 @@ struct SpritePrivate
         wmesh.dirty = false;
         wmesh.qArray = 0;
         depthMode = 0;
+        depthBias = 0.0f;
         wmodel.active = false;
         wmodel.model = 0;
     }
@@ -826,7 +828,7 @@ struct SpritePrivate
             worldMat[6]  = -dz * l[5];
             worldMat[12] = (a[0] / a[3]) + s * tx + off.x;
             worldMat[13] = (a[1] / a[3]) + s * ty + off.y;
-            worldMat[14] = z0 - dz * ty;
+            worldMat[14] = z0 - dz * ty + depthBias;
             return worldMat;
         }
 
@@ -1601,6 +1603,7 @@ size_t Sprite::worldMeshSize() const
 }
 
 DEF_ATTR_SIMPLE(Sprite, DepthMode, int, p->depthMode)
+DEF_ATTR_SIMPLE(Sprite, DepthBias, float, p->depthBias)
 
 void Sprite::setWorldModel(Model3D *model, const float modelMat[16], const float normalMat[16])
 {

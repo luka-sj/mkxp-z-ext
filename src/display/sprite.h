@@ -124,6 +124,9 @@ public:
 	/* 0 none, 1 test, 2 test and write. */
 	DECL_ATTR( DepthMode, int )
 
+	/* Added to an anchored sprite's depth, in the camera's z units. */
+	DECL_ATTR( DepthBias, float )
+
 	/* Draws a 3D model through the viewport camera in place of the bitmap;
 	 * both matrices are column-major. */
 	void setWorldModel(class Model3D *model, const float modelMat[16], const float normalMat[16]);
