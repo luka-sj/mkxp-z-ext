@@ -459,6 +459,7 @@ RB_METHOD_GUARD(spriteWorldMeshSize) {
 RB_METHOD_GUARD_END
 
 DEF_PROP_I(Sprite, DepthMode)
+DEF_PROP_F(Sprite, DepthBias)
 
 RB_METHOD_GUARD(spriteWorldModelSet) {
     Sprite *s = getPrivateData<Sprite>(self);
@@ -574,6 +575,7 @@ void spriteBindingInit() {
     _rb_define_method(klass, "world_mesh_clear", spriteWorldMeshClear);
     _rb_define_method(klass, "world_mesh_size", spriteWorldMeshSize);
     INIT_PROP_BIND(Sprite, DepthMode, "depth_mode");
+    INIT_PROP_BIND(Sprite, DepthBias, "depth_bias");
     _rb_define_method(klass, "world_model_set", spriteWorldModelSet);
     _rb_define_method(klass, "world_model_clear", spriteWorldModelClear);
 }
