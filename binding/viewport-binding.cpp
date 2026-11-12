@@ -279,5 +279,5 @@ void viewportBindingInit() {
     _rb_define_method(klass, "camera_set", viewportCameraSet);
     _rb_define_method(klass, "camera_clear", viewportCameraClear);
     _rb_define_method(klass, "camera_active?", viewportCameraActive);
-    rb_define_const(klass, "WORLD_CAMERA", INT2FIX(1));
+    rb_define_const(klass, "WORLD_CAMERA", INT2FIX(2));
 }

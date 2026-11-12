@@ -11,6 +11,9 @@ uniform sampler2D u_diffuseTex;
 uniform vec4 u_diffuseColor;
 uniform vec3 u_lightDir;
 uniform float u_ambient;
+uniform vec4 u_tone;
+uniform vec4 u_color;
+uniform float u_fade;
 
 void main() {
     vec4 tex = texture2D(u_diffuseTex, v_texCoord);
@@ -33,5 +36,10 @@ void main() {
      * texture, so diffuse colours stay true instead of clamping to white. */
     float shade = u_ambient + (1.0 - u_ambient) * lambert;
 
-    gl_FragColor = vec4(texColor.rgb * shade, texColor.a);
+    vec3 rgb = texColor.rgb * shade;
+    float luma = dot(rgb, vec3(.299, .587, .114));
+    rgb = mix(rgb, vec3(luma), u_tone.w) + u_tone.rgb;
+    rgb = mix(rgb, u_color.rgb, u_color.a);
+
+    gl_FragColor = vec4(rgb, texColor.a * (1.0 - u_fade));
 }
