@@ -26,6 +26,7 @@ class Bitmap;
 class CustomShader;
 struct Model3DPrivate;
 struct TEXFBO;
+struct Vec4;
 
 class Model3D : public Disposable
 {
@@ -101,6 +102,11 @@ public:
 	/* Render the model to a Bitmap */
 	Bitmap *render(int width, int height);
 	Bitmap *renderTo(Bitmap *target, int width, int height);
+
+	/* Draws the mesh into the bound framebuffer with a ready clip matrix,
+	 * testing and writing depth. */
+	void drawWorld(const float mvp[16], const float normalMat[16],
+	               const Vec4 &tone, const Vec4 &color, float opacity);
 
 private:
 	void renderInto(TEXFBO &target, int width, int height);

@@ -28,6 +28,7 @@
 #include "sprite.h"
 #include "viewportelement-binding.h"
 #include "display/customshader.h"
+#include "display/model3d.h"
 
 #include <string.h>
 #include <vector>
@@ -459,6 +460,40 @@ RB_METHOD_GUARD_END
 
 DEF_PROP_I(Sprite, DepthMode)
 
+RB_METHOD_GUARD(spriteWorldModelSet) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE modelObj, matrix, normal;
+    rb_get_args(argc, argv, "ooo", &modelObj, &matrix, &normal RB_ARG_END);
+
+    size_t bytes = 16 * sizeof(float);
+    if (!RB_TYPE_P(matrix, RUBY_T_STRING) || (size_t) RSTRING_LEN(matrix) != bytes ||
+        !RB_TYPE_P(normal, RUBY_T_STRING) || (size_t) RSTRING_LEN(normal) != bytes)
+        rb_raise(rb_eArgError, "Expected two packed Strings of 16 floats");
+
+    Model3D *model = getPrivateDataCheck<Model3D>(modelObj, Model3DType);
+    float mat[16], norm[16];
+    memcpy(mat, RSTRING_PTR(matrix), bytes);
+    memcpy(norm, RSTRING_PTR(normal), bytes);
+
+    GFX_GUARD_EXC(s->setWorldModel(model, mat, norm);)
+    rb_iv_set(self, "@world_model", modelObj);
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteWorldModelClear) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    GFX_GUARD_EXC(s->clearWorldModel();)
+    rb_iv_set(self, "@world_model", Qnil);
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
 void spriteBindingInit() {
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
@@ -539,4 +574,6 @@ void spriteBindingInit() {
     _rb_define_method(klass, "world_mesh_clear", spriteWorldMeshClear);
     _rb_define_method(klass, "world_mesh_size", spriteWorldMeshSize);
     INIT_PROP_BIND(Sprite, DepthMode, "depth_mode");
+    _rb_define_method(klass, "world_model_set", spriteWorldModelSet);
+    _rb_define_method(klass, "world_model_clear", spriteWorldModelClear);
 }

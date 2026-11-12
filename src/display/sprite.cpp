@@ -29,6 +29,7 @@
 #include "etc-internal.h"
 #include "util.h"
 #include "customshader.h"
+#include "model3d.h"
 
 #include "gl-util.h"
 #include "quad.h"
@@ -195,6 +196,14 @@ struct SpritePrivate
     int depthMode;
     float worldMat[16];
 
+    struct
+    {
+        bool active;
+        Model3D *model;
+        float mat[16];
+        float normal[16];
+    } wmodel;
+
     EtcTemps tmp;
     
     sigslot::connection prepareCon;
@@ -263,6 +272,8 @@ struct SpritePrivate
         wmesh.dirty = false;
         wmesh.qArray = 0;
         depthMode = 0;
+        wmodel.active = false;
+        wmodel.model = 0;
     }
 
     ~SpritePrivate()
@@ -726,6 +737,43 @@ struct SpritePrivate
         wmesh.qArray->commit();
     }
 
+    static void mulMat(float out[16], const float a[16], const float b[16])
+    {
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 4; ++r)
+                out[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] +
+                                 a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    }
+
+    void drawWorldModel(const Vec4 &blend)
+    {
+        const Vec2i &off = trans.getGlobalOffset();
+        float cam[16];
+        memcpy(cam, viewport->camera().mat, sizeof(cam));
+        for (int i = 0; i < 4; ++i)
+        {
+            cam[i * 4]     += off.x * cam[i * 4 + 3];
+            cam[i * 4 + 1] += off.y * cam[i * 4 + 3];
+        }
+
+        const IntRect &vp = glState.viewport.get();
+        const float proj[16] =
+        {
+            2.0f / vp.w, 0, 0, 0,
+            0, 2.0f / vp.h, 0, 0,
+            0, 0, -2.0f, 0,
+            -1, -1, -1, 1
+        };
+
+        float world[16], mvp[16];
+        mulMat(world, cam, wmodel.mat);
+        mulMat(mvp, proj, world);
+
+        glState.blendMode.pushSet(blendType);
+        wmodel.model->drawWorld(mvp, wmodel.normal, tone->norm, blend, opacity.norm);
+        glState.blendMode.pop();
+    }
+
     const float *worldMatrix()
     {
         if (!viewport || !(wmesh.active || anchor.active))
@@ -744,22 +792,42 @@ struct SpritePrivate
         }
         else
         {
+            /* Billboard: the anchor is projected once, the sprite keeps its
+             * flat shape at the anchor's scale and takes the depth of an
+             * upright plane. */
+            float a[4], b[4];
+            for (int r = 0; r < 4; ++r)
+            {
+                a[r] = c[r] * anchor.x + c[4 + r] * anchor.y + c[8 + r] * anchor.z + c[12 + r];
+                b[r] = a[r] + c[8 + r] * cam.upright;
+            }
+
+            memset(worldMat, 0, sizeof(worldMat));
+            worldMat[15] = 1.0f;
+            if (a[3] <= 0.0001f || b[3] <= 0.0001f)
+            {
+                worldMat[14] = 2.0f;
+                return worldMat;
+            }
+
             const float *l = trans.getMatrix();
             const Vec2 &pos = trans.getPosition();
-            float k = cam.upright;
-            float cols[4][4] =
-            {
-                { l[0], 0.0f, -k * l[1], 0.0f },
-                { l[4], 0.0f, -k * l[5], 0.0f },
-                { 0.0f, 0.0f, 0.0f, 0.0f },
-                { anchor.x + l[12] - pos.x - off.x, anchor.y,
-                  anchor.z - k * (l[13] - pos.y - off.y), 1.0f }
-            };
+            float tx = l[12] - pos.x - off.x;
+            float ty = l[13] - pos.y - off.y;
+            float s  = c[0] / a[3];
+            float z0 = a[2] / a[3];
+            float dz = (b[2] / b[3]) - z0;
 
-            for (int i = 0; i < 4; ++i)
-                for (int r = 0; r < 4; ++r)
-                    worldMat[i * 4 + r] = c[r] * cols[i][0] + c[4 + r] * cols[i][1] +
-                                          c[8 + r] * cols[i][2] + c[12 + r] * cols[i][3];
+            worldMat[0]  = s * l[0];
+            worldMat[1]  = s * l[1];
+            worldMat[2]  = -dz * l[1];
+            worldMat[4]  = s * l[4];
+            worldMat[5]  = s * l[5];
+            worldMat[6]  = -dz * l[5];
+            worldMat[12] = (a[0] / a[3]) + s * tx + off.x;
+            worldMat[13] = (a[1] / a[3]) + s * ty + off.y;
+            worldMat[14] = z0 - dz * ty;
+            return worldMat;
         }
 
         for (int i = 0; i < 4; ++i)
@@ -1022,6 +1090,13 @@ struct SpritePrivate
     
     void prepare()
     {
+        if (wmodel.active)
+        {
+            isVisible = *spriteVisible && viewport && viewport->getVisible() &&
+                        viewport->camera().active && !wmodel.model->isDisposed();
+            return;
+        }
+
         // Skip preparations and drawing if the bitmap is disposed or the sprite or viewport is invisible
         if (nullOrDisposed(realBitmap) || !(*spriteVisible) || (viewport && !viewport->getVisible()))
         {
@@ -1527,6 +1602,24 @@ size_t Sprite::worldMeshSize() const
 
 DEF_ATTR_SIMPLE(Sprite, DepthMode, int, p->depthMode)
 
+void Sprite::setWorldModel(Model3D *model, const float modelMat[16], const float normalMat[16])
+{
+    guardDisposed();
+
+    p->wmodel.model = model;
+    memcpy(p->wmodel.mat, modelMat, sizeof(p->wmodel.mat));
+    memcpy(p->wmodel.normal, normalMat, sizeof(p->wmodel.normal));
+    p->wmodel.active = true;
+}
+
+void Sprite::clearWorldModel()
+{
+    guardDisposed();
+
+    p->wmodel.active = false;
+    p->wmodel.model = 0;
+}
+
 void Sprite::initDynAttribs()
 {
     p->realSrcRect = new Rect;
@@ -1723,6 +1816,16 @@ void Sprite::draw()
 
     if (emptyFlashFlag)
         return;
+
+    if (p->wmodel.active)
+    {
+        SpriteBatch::flush();
+        const Vec4 &blend = (flashing && flashColor.w > p->color->norm.w) ?
+                            flashColor : p->color->norm;
+        p->drawWorldModel(blend);
+        SpriteBatch::flush();
+        return;
+    }
 
     ShaderBase *base;
 

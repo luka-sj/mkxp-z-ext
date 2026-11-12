@@ -1072,6 +1072,86 @@ Bitmap *Model3D::renderTo(Bitmap *target, int width, int height)
 	return target;
 }
 
+static void setEffects(GLuint prog, const Vec4 &tone, const Vec4 &color, float fade)
+{
+	GLint uTone  = gl.GetUniformLocation(prog, "u_tone");
+	GLint uColor = gl.GetUniformLocation(prog, "u_color");
+	GLint uFade  = gl.GetUniformLocation(prog, "u_fade");
+
+	if (uTone >= 0)  gl.Uniform4f(uTone, tone.x, tone.y, tone.z, tone.w);
+	if (uColor >= 0) gl.Uniform4f(uColor, color.x, color.y, color.z, color.w);
+	if (uFade >= 0)  gl.Uniform1f(uFade, fade);
+}
+
+void Model3D::drawWorld(const float mvp[16], const float normalMat[16],
+                        const Vec4 &tone, const Vec4 &color, float opacity)
+{
+	guardDisposed();
+
+	static const float identity[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
+	GLuint prog = p->program;
+
+	gl.Enable(GL_DEPTH_TEST);
+	gl.DepthFunc(GL_LEQUAL);
+	gl.UseProgram(prog);
+
+	if (p->u_projMat >= 0)   gl.UniformMatrix4fv(p->u_projMat, 1, GL_FALSE, mvp);
+	if (p->u_viewMat >= 0)   gl.UniformMatrix4fv(p->u_viewMat, 1, GL_FALSE, identity);
+	if (p->u_modelMat >= 0)  gl.UniformMatrix4fv(p->u_modelMat, 1, GL_FALSE, identity);
+	if (p->u_normalMat >= 0) gl.UniformMatrix4fv(p->u_normalMat, 1, GL_FALSE, normalMat);
+	if (p->u_lightDir >= 0)  gl.Uniform3f(p->u_lightDir, p->lightX, p->lightY, p->lightZ);
+	if (p->u_ambient >= 0)   gl.Uniform1f(p->u_ambient, p->ambient);
+	setEffects(prog, tone, color, 1.0f - opacity);
+
+	gl.BindBuffer(GL_ARRAY_BUFFER, p->vbo);
+
+	const int stride = 8 * sizeof(float);
+	gl.EnableVertexAttribArray(0);
+	gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);
+	gl.EnableVertexAttribArray(1);
+	gl.VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+	                       (void *)(3 * sizeof(float)));
+	gl.EnableVertexAttribArray(2);
+	gl.VertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
+	                       (void *)(6 * sizeof(float)));
+
+	for (int pass = 0; pass < 2; ++pass)
+	{
+		const bool translucentPass = (pass == 1);
+		gl.DepthMask(translucentPass ? GL_FALSE : GL_TRUE);
+
+		for (size_t i = 0; i < p->materials.size(); ++i)
+		{
+			const MaterialGroup &mg = p->materials[i];
+			if ((mg.diffuseA < 1.0f) != translucentPass)
+				continue;
+
+			gl.ActiveTexture(GL_TEXTURE0);
+			gl.BindTexture(GL_TEXTURE_2D, mg.hasTex ? mg.texGL : p->whiteTex);
+			if (p->u_diffuseTex >= 0) gl.Uniform1i(p->u_diffuseTex, 0);
+
+			if (p->u_diffuseColor >= 0)
+			{
+				if (mg.hasTex)
+					gl.Uniform4f(p->u_diffuseColor, 1.0f, 1.0f, 1.0f, mg.diffuseA);
+				else
+					gl.Uniform4f(p->u_diffuseColor, mg.diffuseR, mg.diffuseG, mg.diffuseB, mg.diffuseA);
+			}
+
+			gl.DrawArrays(GL_TRIANGLES, mg.startVertex, mg.vertexCount);
+		}
+	}
+
+	gl.DisableVertexAttribArray(0);
+	gl.DisableVertexAttribArray(1);
+	gl.DisableVertexAttribArray(2);
+	gl.BindBuffer(GL_ARRAY_BUFFER, 0);
+
+	gl.Disable(GL_DEPTH_TEST);
+	gl.DepthMask(GL_FALSE);
+	glState.program.refresh();
+}
+
 void Model3D::renderInto(TEXFBO &target, int width, int height)
 {
 	/* ---- Save GL state ---- */
@@ -1195,6 +1275,7 @@ void Model3D::renderInto(TEXFBO &target, int width, int height)
 	if (uNormalMat >= 0) gl.UniformMatrix4fv(uNormalMat, 1, GL_FALSE, model);
 	if (uLightDir >= 0)  gl.Uniform3f(uLightDir, p->lightX, p->lightY, p->lightZ);
 	if (uAmbient >= 0)   gl.Uniform1f(uAmbient, p->ambient);
+	setEffects(prog, Vec4(), Vec4(), 0.0f);
 
 	/* Apply user-defined uniforms and textures from the Shader object */
 	if (useCustom)
