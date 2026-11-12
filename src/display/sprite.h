@@ -108,6 +108,22 @@ public:
 	void clearMesh();
 	size_t meshSize() const;
 
+	/* Draws the sprite on an upright plane at a world point through the
+	 * viewport camera; x and y are ignored while set. */
+	void setWorldAnchor(float x, float y, float z);
+	void clearWorldAnchor();
+	bool hasWorldAnchor() const;
+
+	/* World mesh records are 16 floats each: x y z of TL TR BR BL, src x y w h. */
+	static const int worldMeshRecordFloats = 16;
+	void setWorldMesh(const float *records, size_t quadCount);
+	void updateWorldMesh(size_t first, const float *records, size_t quadCount);
+	void clearWorldMesh();
+	size_t worldMeshSize() const;
+
+	/* 0 none, 1 test, 2 test and write. */
+	DECL_ATTR( DepthMode, int )
+
 	void initDynAttribs();
 
 private:

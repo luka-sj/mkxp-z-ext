@@ -330,8 +330,17 @@ void ShaderBase::init()
 {
 	GET_U(texSizeInv);
 	GET_U(translation);
+	GET_U(depthCut);
+	if (u_depthCut < 0)
+		u_depthCut = gl.GetUniformLocation(program, "_mkxp_depthCut");
 
 	projMat.u_mat = gl.GetUniformLocation(program, "projMat");
+}
+
+void ShaderBase::setDepthCut(float value)
+{
+	if (u_depthCut >= 0)
+		gl.Uniform1f(u_depthCut, value);
 }
 
 void ShaderBase::applyViewportProj()

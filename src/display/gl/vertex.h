@@ -33,6 +33,13 @@ struct SVertex
 	Vec2 texPos;
 };
 
+/* World Vertex */
+struct WVertex
+{
+	float pos[3];
+	Vec2 texPos;
+};
+
 /* Color Vertex */
 struct CVertex
 {

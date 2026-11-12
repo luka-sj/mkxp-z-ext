@@ -444,20 +444,35 @@ struct PingPong {
     uint8_t srcInd, dstInd;
     int screenW, screenH;
     
+    GLuint depthRbo;
+
     PingPong(int screenW, int screenH)
-    : srcInd(0), dstInd(1), screenW(screenW), screenH(screenH) {
+    : srcInd(0), dstInd(1), screenW(screenW), screenH(screenH), depthRbo(0) {
+        gl.GenRenderbuffers(1, &depthRbo);
+        allocDepth();
+
         for (int i = 0; i < 2; ++i) {
             TEXFBO::init(rt[i]);
             TEXFBO::allocEmpty(rt[i], screenW, screenH);
             TEXFBO::linkFBO(rt[i]);
+            gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                       GL_RENDERBUFFER, depthRbo);
             gl.ClearColor(0, 0, 0, 1);
             FBO::clear();
         }
     }
-    
+
     ~PingPong() {
         for (int i = 0; i < 2; ++i)
             TEXFBO::fini(rt[i]);
+
+        gl.DeleteRenderbuffers(1, &depthRbo);
+    }
+
+    void allocDepth() {
+        gl.BindRenderbuffer(GL_RENDERBUFFER, depthRbo);
+        gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, screenW, screenH);
+        gl.BindRenderbuffer(GL_RENDERBUFFER, 0);
     }
     
     TEXFBO &backBuffer() { return rt[srcInd]; }
@@ -471,6 +486,8 @@ struct PingPong {
         
         for (int i = 0; i < 2; ++i)
             TEXFBO::allocEmpty(rt[i], width, height);
+
+        allocDepth();
     }
     
     void startRender() { bind(); }

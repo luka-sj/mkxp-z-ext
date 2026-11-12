@@ -136,14 +136,14 @@ static const char *simpleVert =
 
 // Sprite vertex shader with transformation matrix
 static const char *spriteVert =
-	"attribute vec2 position;\n"
+	"attribute vec3 position;\n"
 	"attribute vec2 texCoord;\n"
 	"varying vec2 v_texCoord;\n"
 	"uniform mat4 projMat;\n"
 	"uniform mat4 spriteMat;\n"
 	"uniform vec2 texSizeInv;\n"
 	"void main() {\n"
-	"    gl_Position = projMat * spriteMat * vec4(position, 0.0, 1.0);\n"
+	"    gl_Position = projMat * spriteMat * vec4(position, 1.0);\n"
 	"    v_texCoord = texCoord * texSizeInv;\n"
 	"}\n";
 
@@ -373,6 +373,8 @@ static const char *spriteFragSuffix =
 	"\nvoid main() {\n"
 	"    _mkxp_user_main();\n"
 	"    vec4 _mkxp_frag = gl_FragColor;\n"
+	"    if (_mkxp_frag.a < _mkxp_depthCut)\n"
+	"        discard;\n"
 	"    float _mkxp_luma = dot(_mkxp_frag.rgb, vec3(.299, .587, .114));\n"
 	"    _mkxp_frag.rgb = mix(_mkxp_frag.rgb, vec3(_mkxp_luma), _mkxp_tone.w);\n"
 	"    _mkxp_frag.rgb += _mkxp_tone.rgb;\n"
@@ -468,7 +470,8 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 		"uniform bool _mkxp_bushUnder;\n"
 		"uniform float _mkxp_bushSlope;\n"
 		"uniform float _mkxp_bushIntercept;\n"
-		"uniform lowp float _mkxp_bushOpacity;\n";
+		"uniform lowp float _mkxp_bushOpacity;\n"
+		"uniform mediump float _mkxp_depthCut;\n";
 
 	// Insert after any #version / #extension directives, which must come first.
 	insertAfterDirectives(src, inject);

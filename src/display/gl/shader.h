@@ -98,12 +98,13 @@ public:
 
 	void setTexSize(const Vec2i &value);
 	void setTranslation(const Vec2i &value);
+	void setDepthCut(float value);
 
 protected:
 	void init();
 	virtual bool framebufferScalingAllowed();
 
-	GLint u_texSizeInv, u_translation;
+	GLint u_texSizeInv, u_translation, u_depthCut;
 };
 
 class FlatColorShader : public ShaderBase
