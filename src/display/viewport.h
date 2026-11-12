@@ -62,6 +62,15 @@ struct ViewportPerspective
 	}
 };
 
+/* World camera: column-major matrix from world px to viewport px times w,
+ * with z in -1..0 times w, nearest at 0. */
+struct ViewportCamera
+{
+	bool active = false;
+	float mat[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
+	float upright = 1.0f;
+};
+
 class Viewport : public Scene, public SceneElement, public Flashable, public Disposable
 {
 public:
@@ -88,11 +97,15 @@ public:
 	const Vec2 &worldScroll() const { return world; }
 	void setWorldScroll(const Vec2 &value) { world = value; }
 
+	const ViewportCamera &camera() const { return cam; }
+	void setCamera(const ViewportCamera &value) { cam = value; }
+
 	void initDynAttribs();
 
 private:
 	ViewportPerspective persp;
 	Vec2 world;
+	ViewportCamera cam;
 
 	void initViewport(int x, int y, int width, int height);
 	void geometryChanged();

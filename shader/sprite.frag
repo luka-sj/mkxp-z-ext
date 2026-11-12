@@ -18,6 +18,7 @@ uniform lowp float patternOpacity;
 uniform bool renderPattern;
 
 uniform bool invert;
+uniform mediump float depthCut;
 
 varying vec2 v_texCoord;
 varying vec2 v_patCoord;
@@ -71,7 +72,9 @@ void main()
 {
 	/* Sample source color */
 	vec4 frag = texture2D(texture, v_texCoord);
-    
+	if (frag.a < depthCut)
+		discard;
+
     /* Apply pattern */
     if (renderPattern) {
         vec4 pattfrag = texture2D(pattern, mod(v_patCoord, repeat));

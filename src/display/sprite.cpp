@@ -40,6 +40,7 @@
 
 // TODO: Replace M_PI with std::numbers::pi once we upgrade to C++20.
 #include <math.h>
+#include <string.h>
 #include <algorithm>
 #ifndef M_PI
 # define M_PI 3.14159265358979323846
@@ -177,6 +178,23 @@ struct SpritePrivate
         IntRect bounds;
     } mesh;
 
+    struct
+    {
+        bool active;
+        float x, y, z;
+    } anchor;
+
+    struct
+    {
+        bool active;
+        bool dirty;
+        std::vector<float> records;
+        WorldQuadArray *qArray;
+    } wmesh;
+
+    int depthMode;
+    float worldMat[16];
+
     EtcTemps tmp;
     
     sigslot::connection prepareCon;
@@ -238,6 +256,13 @@ struct SpritePrivate
         mesh.active = false;
         mesh.dirty = false;
         mesh.qArray = 0;
+
+        anchor.active = false;
+        anchor.x = anchor.y = anchor.z = 0.0f;
+        wmesh.active = false;
+        wmesh.dirty = false;
+        wmesh.qArray = 0;
+        depthMode = 0;
     }
 
     ~SpritePrivate()
@@ -246,6 +271,7 @@ struct SpritePrivate
         prepareCon.disconnect();
 
         delete mesh.qArray;
+        delete wmesh.qArray;
 
         bitmapDisposal();
     }
@@ -667,9 +693,89 @@ struct SpritePrivate
         mesh.qArray->commit();
     }
 
+    void updateWorldMesh()
+    {
+        if (!wmesh.dirty && wmesh.qArray)
+            return;
+
+        wmesh.dirty = false;
+
+        if (!wmesh.qArray)
+            wmesh.qArray = new WorldQuadArray;
+
+        const size_t stride = Sprite::worldMeshRecordFloats;
+        size_t total = wmesh.records.size() / stride;
+        wmesh.qArray->resize(total);
+        size_t kept = 0;
+
+        for (size_t i = 0; i < total; ++i)
+        {
+            const float *r = &wmesh.records[i * stride];
+            if (r[14] <= 0.0f || r[15] <= 0.0f)
+                continue;
+
+            WVertex *vert = &wmesh.qArray->vertices[kept * 4];
+            for (int v = 0; v < 4; ++v)
+                for (int c = 0; c < 3; ++c)
+                    vert[v].pos[c] = r[v * 3 + c];
+            Quad::setTexRect(vert, texelInset(FloatRect(r[12], r[13], r[14], r[15]), 0.5f, 0.5f));
+            ++kept;
+        }
+
+        wmesh.qArray->resize(kept);
+        wmesh.qArray->commit();
+    }
+
+    const float *worldMatrix()
+    {
+        if (!viewport || !(wmesh.active || anchor.active))
+            return 0;
+
+        const ViewportCamera &cam = viewport->camera();
+        if (!cam.active)
+            return 0;
+
+        const float *c = cam.mat;
+        const Vec2i &off = trans.getGlobalOffset();
+
+        if (wmesh.active)
+        {
+            memcpy(worldMat, c, sizeof(worldMat));
+        }
+        else
+        {
+            const float *l = trans.getMatrix();
+            const Vec2 &pos = trans.getPosition();
+            float k = cam.upright;
+            float cols[4][4] =
+            {
+                { l[0], 0.0f, -k * l[1], 0.0f },
+                { l[4], 0.0f, -k * l[5], 0.0f },
+                { 0.0f, 0.0f, 0.0f, 0.0f },
+                { anchor.x + l[12] - pos.x - off.x, anchor.y,
+                  anchor.z - k * (l[13] - pos.y - off.y), 1.0f }
+            };
+
+            for (int i = 0; i < 4; ++i)
+                for (int r = 0; r < 4; ++r)
+                    worldMat[i * 4 + r] = c[r] * cols[i][0] + c[4 + r] * cols[i][1] +
+                                          c[8 + r] * cols[i][2] + c[12 + r] * cols[i][3];
+        }
+
+        for (int i = 0; i < 4; ++i)
+        {
+            worldMat[i * 4]     += off.x * worldMat[i * 4 + 3];
+            worldMat[i * 4 + 1] += off.y * worldMat[i * 4 + 3];
+        }
+
+        return worldMat;
+    }
+
     void drawGeometry()
     {
-        if (mesh.active)
+        if (wmesh.active)
+            wmesh.qArray->draw();
+        else if (mesh.active)
             mesh.qArray->draw();
         else if (wave.active && !corners.active && !persp.quadActive)
             wave.qArray.draw();
@@ -690,6 +796,19 @@ struct SpritePrivate
         
         if (!opacity)
             return;
+
+        if (wmesh.active)
+        {
+            isVisible = wmesh.qArray && wmesh.qArray->quadCount != 0 &&
+                        viewport && viewport->camera().active;
+            return;
+        }
+
+        if (anchor.active && viewport && viewport->camera().active)
+        {
+            isVisible = true;
+            return;
+        }
 
         if (mesh.active)
         {
@@ -916,7 +1035,9 @@ struct SpritePrivate
 
         updateChild();
 
-        if (mesh.active)
+        if (wmesh.active)
+            updateWorldMesh();
+        else if (mesh.active)
             updateMesh();
         else
             updatePerspective();
@@ -1343,6 +1464,69 @@ size_t Sprite::meshSize() const
     return p->mesh.active ? p->mesh.records.size() / meshRecordFloats : 0;
 }
 
+void Sprite::setWorldAnchor(float x, float y, float z)
+{
+    guardDisposed();
+
+    p->anchor.active = true;
+    p->anchor.x = x;
+    p->anchor.y = y;
+    p->anchor.z = z;
+}
+
+void Sprite::clearWorldAnchor()
+{
+    guardDisposed();
+
+    p->anchor.active = false;
+}
+
+bool Sprite::hasWorldAnchor() const
+{
+    guardDisposed();
+
+    return p->anchor.active;
+}
+
+void Sprite::setWorldMesh(const float *records, size_t quadCount)
+{
+    guardDisposed();
+
+    p->wmesh.records.assign(records, records + quadCount * worldMeshRecordFloats);
+    p->wmesh.active = true;
+    p->wmesh.dirty = true;
+}
+
+void Sprite::updateWorldMesh(size_t first, const float *records, size_t quadCount)
+{
+    guardDisposed();
+
+    size_t total = p->wmesh.records.size() / worldMeshRecordFloats;
+    if (!p->wmesh.active || first > total || quadCount > total - first)
+        throw Exception(Exception::ArgumentError, "world mesh update out of range");
+
+    std::copy(records, records + quadCount * worldMeshRecordFloats,
+              p->wmesh.records.begin() + first * worldMeshRecordFloats);
+    p->wmesh.dirty = true;
+}
+
+void Sprite::clearWorldMesh()
+{
+    guardDisposed();
+
+    p->wmesh.active = false;
+    p->wmesh.records.clear();
+}
+
+size_t Sprite::worldMeshSize() const
+{
+    guardDisposed();
+
+    return p->wmesh.active ? p->wmesh.records.size() / worldMeshRecordFloats : 0;
+}
+
+DEF_ATTR_SIMPLE(Sprite, DepthMode, int, p->depthMode)
+
 void Sprite::initDynAttribs()
 {
     p->realSrcRect = new Rect;
@@ -1415,7 +1599,7 @@ struct RunState
 RunState run;
 
 /* Sets whatever the run has not set yet; spriteMat always differs per sprite. */
-void bindRunState(const BatchKey &key, const float *spriteMat)
+ShaderBase *bindRunState(const BatchKey &key, const float *spriteMat)
 {
 	const bool fresh = !run.valid || !run.key.matches(key);
 
@@ -1445,7 +1629,7 @@ void bindRunState(const BatchKey &key, const float *spriteMat)
 		}
 		run.valid = true;
 		run.key   = key;
-		return;
+		return &shader;
 	}
 	case BatchAlpha:
 	{
@@ -1464,7 +1648,7 @@ void bindRunState(const BatchKey &key, const float *spriteMat)
 		}
 		run.valid = true;
 		run.key   = key;
-		return;
+		return &shader;
 	}
 	default:
 	{
@@ -1480,9 +1664,30 @@ void bindRunState(const BatchKey &key, const float *spriteMat)
 		}
 		run.valid = true;
 		run.key   = key;
-		return;
+		return &shader;
 	}
 	}
+}
+
+void depthBegin(ShaderBase *shader, int mode)
+{
+	gl.Enable(GL_DEPTH_TEST);
+	gl.DepthFunc(GL_LEQUAL);
+	if (mode == 2)
+	{
+		gl.DepthMask(GL_TRUE);
+		shader->setDepthCut(0.002f);
+	}
+}
+
+void depthEnd(ShaderBase *shader, int mode)
+{
+	if (mode == 2)
+	{
+		shader->setDepthCut(0.0f);
+		gl.DepthMask(GL_FALSE);
+	}
+	gl.Disable(GL_DEPTH_TEST);
 }
 
 } // anonymous namespace
@@ -1505,7 +1710,8 @@ bool Sprite::batchable() const
 		if (p->shaders[i] && !p->shaders[i]->isDisposed())
 			return false;
 
-	return !p->wave.active && !p->mesh.active && p->bushDepth == 0 && !flashing &&
+	return !p->wave.active && !p->mesh.active && !p->wmesh.active &&
+	       p->bushDepth == 0 && !flashing &&
 	       !(p->pattern && !p->pattern->isDisposed());
 }
 
@@ -1524,7 +1730,11 @@ void Sprite::draw()
      * offset only, so the quad's viewport-space corner coordinates map
      * straight through (no position/origin/zoom/rotation). */
     const float *spriteMat;
-    if (p->mesh.active || p->corners.active || p->persp.quadActive)
+    const float *worldMat = p->worldMatrix();
+    const int depthMode = worldMat ? p->depthMode : 0;
+    if (worldMat)
+        spriteMat = worldMat;
+    else if (p->mesh.active || p->corners.active || p->persp.quadActive)
         spriteMat = p->offsetTrans.getMatrix();
     else if (p->persp.projected)
         spriteMat = p->persp.trans.getMatrix();
@@ -1598,7 +1808,11 @@ void Sprite::draw()
             glState.blendMode.pushSet(p->blendType);
             p->bitmap->bindTex(*base, false);
 
+            if (depthMode)
+                depthBegin(base, depthMode);
             p->drawGeometry();
+            if (depthMode)
+                depthEnd(base, depthMode);
 
             glState.blendMode.pop();
         };
@@ -1666,7 +1880,8 @@ void Sprite::draw()
 
     /* Run path: reuse the state a matching predecessor already set. Wave, bush,
      * flash, pattern and smooth scaling all need per-sprite state, so they opt out. */
-    if (!p->wave.active && !p->mesh.active && p->bushDepth == 0 && !flashing &&
+    if (!p->wave.active && !p->mesh.active && !p->wmesh.active &&
+        p->bushDepth == 0 && !flashing &&
         !(p->pattern && !p->pattern->isDisposed()) &&
         scalingMethod == NearestNeighbor)
     {
@@ -1685,10 +1900,14 @@ void Sprite::draw()
         key.bushIntercept = p->bushIntercept;
         key.bushOpacity   = p->bushOpacity.norm;
 
-        bindRunState(key, spriteMat);
+        base = bindRunState(key, spriteMat);
 
         glState.blendMode.pushSet(p->blendType);
+        if (depthMode)
+            depthBegin(base, depthMode);
         p->quad.draw();
+        if (depthMode)
+            depthEnd(base, depthMode);
         glState.blendMode.pop();
         return;
     }
@@ -1825,7 +2044,11 @@ void Sprite::draw()
 
     TEX::setSmooth(scalingMethod == Bilinear);
 
+    if (depthMode)
+        depthBegin(base, depthMode);
     p->drawGeometry();
+    if (depthMode)
+        depthEnd(base, depthMode);
 
     TEX::setSmooth(false);
 

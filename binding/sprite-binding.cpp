@@ -359,6 +359,106 @@ RB_METHOD_GUARD(spriteMeshSize) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(spriteWorldAnchorSet) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    double x, y, z;
+    rb_get_args(argc, argv, "fff", &x, &y, &z RB_ARG_END);
+
+    GFX_GUARD_EXC(s->setWorldAnchor((float) x, (float) y, (float) z);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteWorldAnchorClear) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    GFX_GUARD_EXC(s->clearWorldAnchor();)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteWorldAnchored) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    return rb_bool_new(s->hasWorldAnchor());
+}
+RB_METHOD_GUARD_END
+
+static size_t worldMeshQuadCount(VALUE data) {
+    if (!RB_TYPE_P(data, RUBY_T_STRING))
+        rb_raise(rb_eTypeError, "Expected a packed String of world mesh records");
+
+    size_t recordBytes = Sprite::worldMeshRecordFloats * sizeof(float);
+    size_t bytes = (size_t) RSTRING_LEN(data);
+    if (bytes % recordBytes != 0)
+        rb_raise(rb_eArgError, "world mesh data must hold 16 floats per quad");
+
+    return bytes / recordBytes;
+}
+
+RB_METHOD_GUARD(spriteWorldMeshSet) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    VALUE data;
+    rb_get_args(argc, argv, "o", &data RB_ARG_END);
+
+    size_t quads = worldMeshQuadCount(data);
+    std::vector<float> records(quads * Sprite::worldMeshRecordFloats);
+    if (quads)
+        memcpy(&records[0], RSTRING_PTR(data), records.size() * sizeof(float));
+
+    GFX_GUARD_EXC(s->setWorldMesh(quads ? &records[0] : 0, quads);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteWorldMeshUpdate) {
+    Sprite *s = getPrivateData<Sprite>(self);
+
+    int first;
+    VALUE data;
+    rb_get_args(argc, argv, "io", &first, &data RB_ARG_END);
+
+    if (first < 0)
+        rb_raise(rb_eArgError, "world mesh index must not be negative");
+
+    size_t quads = worldMeshQuadCount(data);
+    std::vector<float> records(quads * Sprite::worldMeshRecordFloats);
+    if (quads)
+        memcpy(&records[0], RSTRING_PTR(data), records.size() * sizeof(float));
+
+    GFX_GUARD_EXC(s->updateWorldMesh((size_t) first, quads ? &records[0] : 0, quads);)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteWorldMeshClear) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    GFX_GUARD_EXC(s->clearWorldMesh();)
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(spriteWorldMeshSize) {
+    RB_UNUSED_PARAM;
+
+    Sprite *s = getPrivateData<Sprite>(self);
+    return INT2NUM((int) s->worldMeshSize());
+}
+RB_METHOD_GUARD_END
+
+DEF_PROP_I(Sprite, DepthMode)
+
 void spriteBindingInit() {
     VALUE klass = rb_define_class("Sprite", rb_cObject);
 #if RAPI_FULL > 187
@@ -430,4 +530,13 @@ void spriteBindingInit() {
     _rb_define_method(klass, "mesh_update", spriteMeshUpdate);
     _rb_define_method(klass, "mesh_clear", spriteMeshClear);
     _rb_define_method(klass, "mesh_size", spriteMeshSize);
+
+    _rb_define_method(klass, "world_anchor_set", spriteWorldAnchorSet);
+    _rb_define_method(klass, "world_anchor_clear", spriteWorldAnchorClear);
+    _rb_define_method(klass, "world_anchored?", spriteWorldAnchored);
+    _rb_define_method(klass, "world_mesh_set", spriteWorldMeshSet);
+    _rb_define_method(klass, "world_mesh_update", spriteWorldMeshUpdate);
+    _rb_define_method(klass, "world_mesh_clear", spriteWorldMeshClear);
+    _rb_define_method(klass, "world_mesh_size", spriteWorldMeshSize);
+    INIT_PROP_BIND(Sprite, DepthMode, "depth_mode");
 }

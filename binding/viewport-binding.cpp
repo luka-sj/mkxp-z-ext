@@ -28,6 +28,8 @@
 #include "viewport.h"
 #include "display/customshader.h"
 
+#include <string.h>
+
 #if RAPI_FULL > 187
 DEF_TYPE(Viewport);
 #else
@@ -202,6 +204,45 @@ RB_METHOD_GUARD(viewportWorldScroll) {
 }
 RB_METHOD_GUARD_END
 
+RB_METHOD_GUARD(viewportCameraSet) {
+    Viewport *v = getPrivateData<Viewport>(self);
+
+    VALUE data;
+    double upright = 1.0;
+    rb_get_args(argc, argv, "o|f", &data, &upright RB_ARG_END);
+
+    if (!RB_TYPE_P(data, RUBY_T_STRING) ||
+        (size_t) RSTRING_LEN(data) != 16 * sizeof(float))
+        rb_raise(rb_eArgError, "Expected a packed String of 16 floats");
+
+    ViewportCamera cam;
+    cam.active = true;
+    memcpy(cam.mat, RSTRING_PTR(data), sizeof(cam.mat));
+    cam.upright = (float) upright;
+    v->setCamera(cam);
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportCameraClear) {
+    RB_UNUSED_PARAM;
+
+    Viewport *v = getPrivateData<Viewport>(self);
+    v->setCamera(ViewportCamera());
+
+    return Qnil;
+}
+RB_METHOD_GUARD_END
+
+RB_METHOD_GUARD(viewportCameraActive) {
+    RB_UNUSED_PARAM;
+
+    Viewport *v = getPrivateData<Viewport>(self);
+    return rb_bool_new(v->camera().active);
+}
+RB_METHOD_GUARD_END
+
 void viewportBindingInit() {
     VALUE klass = rb_define_class("Viewport", rb_cObject);
 #if RAPI_FULL > 187
@@ -234,4 +275,9 @@ void viewportBindingInit() {
     _rb_define_method(klass, "world_scroll_set", viewportWorldScrollSet);
     _rb_define_method(klass, "world_scroll", viewportWorldScroll);
     rb_define_const(klass, "PERSPECTIVE_LAW", INT2FIX(3));
+
+    _rb_define_method(klass, "camera_set", viewportCameraSet);
+    _rb_define_method(klass, "camera_clear", viewportCameraClear);
+    _rb_define_method(klass, "camera_active?", viewportCameraActive);
+    rb_define_const(klass, "WORLD_CAMERA", INT2FIX(1));
 }

@@ -40,6 +40,12 @@ static const VertexAttribute SVertexAttribs[] =
 	{ Shader::TexCoord, 2, GL_FLOAT, o(SVertex, texPos) }
 };
 
+static const VertexAttribute WVertexAttribs[] =
+{
+	{ Shader::Position, 3, GL_FLOAT, o(WVertex, pos)    },
+	{ Shader::TexCoord, 2, GL_FLOAT, o(WVertex, texPos) }
+};
+
 static const VertexAttribute CVertexAttribs[] =
 {
 	{ Shader::Color,    4, GL_FLOAT, o(CVertex, color) },
@@ -60,5 +66,6 @@ static const VertexAttribute VertexAttribs[] =
 	const GLsizei VertexTraits<VertType>::attrCount = ARRAY_SIZE(VertType##Attribs)
 
 DEF_TRAITS(SVertex);
+DEF_TRAITS(WVertex);
 DEF_TRAITS(CVertex);
 DEF_TRAITS(Vertex);

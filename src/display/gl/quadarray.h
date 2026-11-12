@@ -123,5 +123,6 @@ struct QuadArray
 
 typedef QuadArray<Vertex> ColorQuadArray;
 typedef QuadArray<SVertex> SimpleQuadArray;
+typedef QuadArray<WVertex> WorldQuadArray;
 
 #endif // QUADARRAY_H

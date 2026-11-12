@@ -26,6 +26,7 @@
 #include "util.h"
 #include "quad.h"
 #include "glstate.h"
+#include "gl-fun.h"
 #include "graphics.h"
 #include "customshader.h"
 
@@ -215,6 +216,13 @@ void Viewport::composite()
 	/* Setup scissor */
 	glState.scissorTest.pushSet(true);
 	glState.scissorBox.pushSet(p->rect->toIntRect());
+
+	if (cam.active)
+	{
+		gl.DepthMask(GL_TRUE);
+		gl.Clear(GL_DEPTH_BUFFER_BIT);
+		gl.DepthMask(GL_FALSE);
+	}
 
 	Scene::composite();
 
