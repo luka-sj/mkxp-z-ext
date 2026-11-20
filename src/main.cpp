@@ -309,8 +309,9 @@ int main(int argc, char *argv[]) {
 #ifdef MKXPZ_CHECK_FOR_WAYLAND_SUPPORT
     {
       const char *sdl_videodriver = SDL_GetHint(SDL_HINT_VIDEODRIVER);
-      if (sdl_videodriver == nullptr || sdl_videodriver[0] == 0) {
-        /* Select SDL's Wayland video driver if SDL_VIDEODRIVER is unset and Wayland support is available on the user's machine */
+      const char *x11_display = getenv("DISPLAY");
+      if ((sdl_videodriver == nullptr || sdl_videodriver[0] == 0) && (x11_display == nullptr || x11_display[0] == 0)) {
+        /* Select SDL's Wayland video driver if SDL_VIDEODRIVER is unset, no X display is running and Wayland support is available on the user's machine */
         void *wayland_client = SDL_LoadObject(MKXPZ_WAYLAND_CLIENT_SONAME);
         void *wayland_cursor = SDL_LoadObject(MKXPZ_WAYLAND_CURSOR_SONAME);
         void *wayland_egl = SDL_LoadObject(MKXPZ_WAYLAND_EGL_SONAME);
