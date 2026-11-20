@@ -968,7 +968,7 @@ void Model3D::setShader(CustomShader *shader)
 		p->customShader = 0;
 		throw Exception(Exception::MKXPError,
 		                "Shader '%s' is not compatible with Model3D:\n%s",
-		                filename.c_str(), e.msg);
+		                filename.c_str(), e.msg.c_str());
 	}
 
 	p->customProgram = gl.CreateProgram();
