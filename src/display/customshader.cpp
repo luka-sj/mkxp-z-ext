@@ -197,6 +197,15 @@ static void insertAfterDirectives(std::string &src, const std::string &inject)
 	src.insert(insertPos, inject);
 }
 
+// Custom shaders get full float precision on GLES, where the medium default breaks their noise maths.
+static std::string customFragHeaderSource()
+{
+	return Shader::commonHeaderSource(true) +
+		"#if defined(GLSLES) && defined(GL_FRAGMENT_PRECISION_HIGH)\n"
+		"precision highp float;\n"
+		"#endif\n";
+}
+
 CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
                                    const char *fragName,
                                    const char *vertContents, int vertSize,
@@ -220,7 +229,7 @@ CustomShaderImpl::CustomShaderImpl(const char *fragContents, int fragSize,
 	// header (common.h) so custom shaders compile on OpenGL ES (no default
 	// float precision otherwise).
 	std::string fragSrc(fragContents, fragSize);
-	insertAfterDirectives(fragSrc, Shader::commonHeaderSource(true));
+	insertAfterDirectives(fragSrc, customFragHeaderSource());
 
 	// Cache lookup — a link is a pure function of (vertSrc, fragSrc) plus
 	// the fixed attribute bindings we always apply.
@@ -459,7 +468,7 @@ static std::string buildWrappedFragSource(const char *fragContents, int fragSize
 	// shaders receive — on GLES it declares the default float precision, on
 	// desktop it #defines the precision qualifiers (lowp/mediump/highp) away
 	// — followed by the built-in effect uniform declarations.
-	std::string inject = Shader::commonHeaderSource(true);
+	std::string inject = customFragHeaderSource();
 
 	inject +=
 		"uniform lowp vec4 _mkxp_tone;\n"
@@ -515,7 +524,7 @@ CustomSpriteShaderImpl::CustomSpriteShaderImpl(const char *fragContents, int fra
 
 	// Prepare fallback source
 	std::string fallbackSrc(fragContents, fragSize);
-	insertAfterDirectives(fallbackSrc, Shader::commonHeaderSource(true));
+	insertAfterDirectives(fallbackSrc, customFragHeaderSource());
 
 	if (wrappedSrc.empty())
 	{
