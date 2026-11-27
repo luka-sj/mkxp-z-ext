@@ -130,6 +130,8 @@ void Config::read(int argc, char *argv[]) {
         {"rgssVersion", 0},
         {"debugMode", false},
         {"consoleAgentPort", 0},
+        {"streamPort", 0},
+        {"streamFrameRate", 60},
         {"displayFPS", false},
         {"printFPS", false},
         {"winResizable", true},
@@ -278,6 +280,8 @@ try { exp } catch (...) {}
     
     SET_OPT(debugMode, boolean);
     SET_OPT(consoleAgentPort, integer);
+    SET_OPT(streamPort, integer);
+    SET_OPT(streamFrameRate, integer);
     SET_OPT(displayFPS, boolean);
     SET_OPT(printFPS, boolean);
     SET_OPT(fullscreen, boolean);

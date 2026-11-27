@@ -45,6 +45,8 @@
 #include "input.h"
 #include "sprite.h"
 #include "customshader.h"
+#include "stream-capture.h"
+#include "stream-server.h"
 
 #include <SDL.h>
 #include <SDL_image.h>
@@ -1084,6 +1086,11 @@ struct GraphicsPrivate {
     /* Global list of all live Disposables
      * (disposed on reset) */
     IntruList<Disposable> dispList;
+
+    StreamServer *streamServer;
+    StreamCapture *streamCapture;
+    bool streamPacing;
+    bool streamSavedLimiterDisabled;
     
     GraphicsPrivate(RGSSThreadData *rtData)
     : scResLores(DEF_SCREEN_W, DEF_SCREEN_H),
@@ -1120,9 +1127,22 @@ struct GraphicsPrivate {
         screenQuad.setTexPosRect(screenRect, screenRect);
         
         fpsLimiter.resetFrameAdjust();
+
+        streamServer = nullptr;
+        streamCapture = nullptr;
+        streamPacing = false;
+        streamSavedLimiterDisabled = false;
+
+        if (rtData->config.streamPort > 0) {
+            streamServer = new StreamServer(rtData->config.streamPort, rtData->config.streamFrameRate, *rtData);
+            streamServer->start();
+            streamCapture = new StreamCapture(*streamServer);
+        }
     }
     
     ~GraphicsPrivate() {
+        delete streamCapture;
+        delete streamServer;
         TEXFBO::fini(frozenScene);
         TEXFBO::fini(integerScaleBuffer);
         SDL_DestroyMutex(avgFPSLock);
@@ -1253,8 +1273,35 @@ struct GraphicsPrivate {
     }
     
 private:
-    template <typename... Args> void swapGLBufferImpl(const Vec2i &screenSize, TEXFBO &source, int scaleIsSpecial, Args... args) {
+    void updateStreamPacing() {
+        bool streaming = streamServer && streamServer->connected();
+        if (streaming == streamPacing)
+            return;
+
+        streamPacing = streaming;
+
+        if (streaming) {
+            streamSavedLimiterDisabled = fpsLimiter.disabled;
+            if (fpsLimiter.disabled) {
+                fpsLimiter.setDesiredFPS(std::max(frameRate, 1));
+                fpsLimiter.disabled = false;
+                fpsLimiter.resetFrameAdjust();
+            }
+            SDL_GL_SetSwapInterval(0);
+        } else {
+            const Config &conf = threadData->config;
+            SDL_GL_SetSwapInterval(conf.vsync || conf.syncToRefreshrate ? 1 : 0);
+            fpsLimiter.disabled = streamSavedLimiterDisabled;
+            fpsLimiter.resetFrameAdjust();
+        }
+    }
+
+    template <typename... Args> void swapGLBufferImpl(const Vec2i &screenSize, TEXFBO &source, const Vec2i &sourceSize, int scaleIsSpecial, Args... args) {
+        updateStreamPacing();
         fpsLimiter.delay();
+
+        if (streamCapture)
+            streamCapture->capture(source, sourceSize, scRes);
 
         GLMeta::blitBeginScreen(screenSize, scaleIsSpecial);
         GLMeta::blitSource(source, scaleIsSpecial);
@@ -1278,15 +1325,15 @@ private:
 
 public:
     void swapGLBuffer(const Vec2i &screenSize, TEXFBO &source, int scaleIsSpecial) {
-        swapGLBufferImpl(screenSize, source, scaleIsSpecial, scaleIsSpecial);
+        swapGLBufferImpl(screenSize, source, scRes, scaleIsSpecial, scaleIsSpecial);
     }
 
     void swapGLBuffer(const Vec2i &screenSize, TEXFBO &source, const Vec2i &sourceSize, int scaleIsSpecial) {
-        swapGLBufferImpl(screenSize, source, scaleIsSpecial, sourceSize, scaleIsSpecial);
+        swapGLBufferImpl(screenSize, source, sourceSize, scaleIsSpecial, sourceSize, scaleIsSpecial);
     }
 
     void swapGLBuffer(const Vec2i &screenSize, TEXFBO &source, const Vec2i &sourceSize, int scaleIsSpecial, bool forceNearestNeighbor) {
-        swapGLBufferImpl(screenSize, source, scaleIsSpecial, sourceSize, scaleIsSpecial, forceNearestNeighbor);
+        swapGLBufferImpl(screenSize, source, sourceSize, scaleIsSpecial, sourceSize, scaleIsSpecial, forceNearestNeighbor);
     }
     
     void compositeToBuffer(TEXFBO &buffer) {
