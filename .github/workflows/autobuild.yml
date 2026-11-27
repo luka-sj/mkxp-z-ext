@@ -71,6 +71,13 @@ jobs:
         with:
           length: 7
 
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: |
           sudo apt update
@@ -99,12 +106,12 @@ jobs:
           rm dist.tar.gz
           tar -C dist --mtime=@$(git show --no-patch --format=%ct) --sort=name --format=posix --mode=a=rX,u+w --owner=0 --group=0 --numeric-owner --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime -cf dist.tar "$(ls dist)"
           zstd --rm -T0 --ultra -20 dist.tar
-          mv dist.tar.zst mkxp-z.${{ matrix.artifact-name }}.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}.tar.zst
+          mv dist.tar.zst mkxp-z.${{ matrix.artifact-name }}.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}.tar.zst
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          path: mkxp-z.${{ matrix.artifact-name }}.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}.tar.zst
+          path: mkxp-z.${{ matrix.artifact-name }}.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}.tar.zst
           archive: false
 
   build-windows-msys2:
@@ -115,6 +122,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         uses: msys2/setup-msys2@v2
@@ -211,7 +225,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.windows.msys2.x86_64.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.windows.msys2.x86_64.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
   build-windows-cross:
@@ -236,6 +250,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -318,7 +339,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.windows.cross.${{matrix.arch_mkxpz}}.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.windows.cross.${{matrix.arch_mkxpz}}.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
   build-linux-gnu:
@@ -341,6 +362,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -505,7 +533,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.linux.${{ matrix.distro }}.${{ matrix.suite }}.${{matrix.arch_mkxpz}}.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.linux.${{ matrix.distro }}.${{ matrix.suite }}.${{matrix.arch_mkxpz}}.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
   build-linux-native-container:
@@ -521,6 +549,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -580,7 +615,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.linux.debian.trixie.x86_64.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.linux.debian.trixie.x86_64.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
   build-linux-cross-container:
@@ -624,6 +659,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -691,7 +733,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.linux.debian.trixie.${{matrix.arch_mkxpz}}.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.linux.debian.trixie.${{matrix.arch_mkxpz}}.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
   build-freebsd:
@@ -752,6 +794,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -912,7 +961,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.freebsd.${{ matrix.arch }}.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.freebsd.${{ matrix.arch }}.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
   build-macos:
@@ -932,6 +981,13 @@ jobs:
         id: short-sha
         with:
           length: 7
+
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -991,13 +1047,13 @@ jobs:
       - name: Upload standalone artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.macos.${{ matrix.arch_mkxpz }}.standalone.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.${{ matrix.arch_mkxpz }}.standalone.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.macos.${{ matrix.arch_mkxpz }}.app.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.${{ matrix.arch_mkxpz }}.app.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: build/artifact-bundle
 
   build-macos-universal:
@@ -1011,28 +1067,35 @@ jobs:
         with:
           length: 7
 
+      - name: Name the build
+        id: ref
+        shell: bash
+        env:
+          REF: ${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}
+        run: echo "name=${REF//\//-}" >> "$GITHUB_OUTPUT"
+
       - name: Download arm64 standalone artifact
         uses: actions/download-artifact@v8
         with:
-          name: mkxp-z.macos.arm64.standalone.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.arm64.standalone.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: artifact-arm64
 
       - name: Download arm64 bundle artifact
         uses: actions/download-artifact@v8
         with:
-          name: mkxp-z.macos.arm64.app.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.arm64.app.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: artifact-bundle-arm64
 
       - name: Download x86_64 standalone artifact
         uses: actions/download-artifact@v8
         with:
-          name: mkxp-z.macos.x86_64.standalone.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.x86_64.standalone.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: artifact-x86_64
 
       - name: Download x86_64 bundle artifact
         uses: actions/download-artifact@v8
         with:
-          name: mkxp-z.macos.x86_64.app.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.x86_64.app.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: artifact-bundle-x86_64
 
       - name: Build
@@ -1053,11 +1116,11 @@ jobs:
       - name: Upload standalone artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.macos.universal.standalone.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.universal.standalone.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: artifact
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mkxp-z.macos.universal.app.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
+          name: mkxp-z.macos.universal.app.${{ steps.ref.outputs.name }}-${{steps.short-sha.outputs.sha}}
           path: artifact-bundle
