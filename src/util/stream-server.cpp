@@ -18,6 +18,7 @@ typedef SOCKET sock_t;
 #define BAD_SOCK INVALID_SOCKET
 #define CLOSESOCK closesocket
 #else
+#include <poll.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -62,6 +63,16 @@ static int32_t getI32(const uint8_t *in)
 	uint32_t value = (uint32_t)in[0] | ((uint32_t)in[1] << 8) |
 	                 ((uint32_t)in[2] << 16) | ((uint32_t)in[3] << 24);
 	return (int32_t)value;
+}
+
+static int windowOffset(int framePixel, float ratio)
+{
+	int offset = (int)std::ceil(framePixel / ratio);
+	while (offset > 0 && (int)((offset - 1) * ratio) >= framePixel)
+		--offset;
+	while ((int)(offset * ratio) < framePixel)
+		++offset;
+	return offset;
 }
 
 static bool sendAll(sock_t fd, const uint8_t *data, size_t size)
@@ -311,6 +322,15 @@ void StreamServer::runAccept()
 
 	while (SDL_AtomicGet(&running))
 	{
+#ifndef __WIN32__
+		struct pollfd pfd;
+		pfd.fd = lfd;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (::poll(&pfd, 1, 200) <= 0 || !(pfd.revents & POLLIN))
+			continue;
+#endif
+
 		sock_t cfd = ::accept(lfd, nullptr, nullptr);
 		if (cfd == BAD_SOCK)
 		{
@@ -353,7 +373,9 @@ void StreamServer::runAccept()
 		}
 
 		SDL_AtomicSet(&clientConnected, 0);
+#ifndef __WIN32__
 		shutdownSocket(cfd);
+#endif
 
 		SDL_LockMutex(socketMutex);
 		bool owned = clientFd == (intptr_t)cfd;
@@ -430,8 +452,8 @@ void StreamServer::injectMotion(int x, int y)
 	if (ratio.x <= 0 || ratio.y <= 0)
 		return;
 
-	pointerX = rtData.screenOffset.x + (int)std::lround(x / ratio.x);
-	pointerY = rtData.screenOffset.y + (int)std::lround(y / ratio.y);
+	pointerX = rtData.screenOffset.x + windowOffset(x, ratio.x);
+	pointerY = rtData.screenOffset.y + windowOffset(y, ratio.y);
 
 	if (!EventThread::mouseState.inWindow)
 	{

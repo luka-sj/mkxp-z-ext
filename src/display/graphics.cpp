@@ -1133,7 +1133,7 @@ struct GraphicsPrivate {
         streamPacing = false;
         streamSavedLimiterDisabled = false;
 
-        if (rtData->config.streamPort > 0) {
+        if (rtData->config.streamPort > 0 && rtData->config.editor.debug) {
             streamServer = new StreamServer(rtData->config.streamPort, rtData->config.streamFrameRate, *rtData);
             streamServer->start();
             streamCapture = new StreamCapture(*streamServer);

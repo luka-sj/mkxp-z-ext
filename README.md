@@ -14,7 +14,7 @@ A fork of [mkxp-z](https://github.com/mkxp-z/mkxp-z) that adds Ruby-driven shade
   {"ok":false,"error":"NameError: undefined local variable or method `foo'","backtrace":["..."]}
   ```
 
-- **Stream output.** Set `streamPort` in `mkxp.json` and one client on loopback receives every presented frame as raw RGBA, and can send keyboard and mouse input back into the game. While a client is connected the game paces itself instead of waiting on vsync, so it keeps full speed when the display sleeps. Each frame is a 24-byte header (`MKXF`, width, height, sequence, capture time in microseconds, all little-endian) followed by the pixels, top row first. Input is 12-byte records: kind (1 key, 2 pointer motion, 3 button, 4 wheel, 5 release all), state, an SDL scancode or button, then x and y in frame pixels.
+- **Stream output.** In debug mode, set `streamPort` in `mkxp.json` and one client on loopback receives every presented frame as raw RGBA, and can send keyboard and mouse input back into the game. While a client is connected the game paces itself instead of waiting on vsync, so it keeps full speed when the display sleeps. Each frame is a 24-byte header (`MKXF`, width, height, sequence, capture time in microseconds, all little-endian) followed by the pixels, top row first. Input is 12-byte records: kind (1 key, 2 pointer motion, 3 button, 4 wheel, 5 release all), state, an SDL scancode or button, then x and y in frame pixels.
 - **Hidden window.** Launch with the `hidden` argument, or set `hiddenWindow`, to run the game's Ruby without showing a window. Useful for jobs like compiling game data.
 
 ### 🎨 Shaders from Ruby
@@ -88,7 +88,7 @@ Give a viewport a world camera, then draw the map, characters and models as one 
 | Option | Default | Description |
 |---|---|---|
 | `consoleAgentPort` | `0` | Loopback port for the agent pipe. `0` turns it off. Debug mode only. |
-| `streamPort` | `0` | Loopback port for stream output. `0` turns it off. |
+| `streamPort` | `0` | Loopback port for stream output. `0` turns it off. Debug mode only. |
 | `streamFrameRate` | `60` | Most frames per second sent to a stream client. |
 | `hiddenWindow` | `false` | Start with the window hidden. Same as the `hidden` launch argument. |
 | `fontSizeMethod` | `0` | `1` for RPG Maker XP text sizing, `2` for the newer method, `0` to pick by RGSS version. |
