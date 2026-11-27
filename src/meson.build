@@ -1273,10 +1273,12 @@ main_source = files(
     'display/gl/tileatlasvx.cpp',
     'display/gl/tilequad.cpp',
     'display/gl/vertex.cpp',
+    'display/stream-capture.cpp',
 
     'util/iniconfig.cpp',
     'util/win-consoleutils.cpp',
     'util/console-input.cpp',
+    'util/stream-server.cpp',
 
     'etc/etc.cpp',
     'etc/table.cpp',

@@ -123,6 +123,13 @@ typedef void (APIENTRYP _PFNGLBINDVERTEXARRAYPROC) (GLuint array);
 /* GLES only */
 typedef void (APIENTRYP _PFNGLRELEASESHADERCOMPILERPROC) (void);
 
+/* Buffer mapping and fences */
+typedef void * (APIENTRYP _PFNGLMAPBUFFERRANGEPROC) (GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access);
+typedef GLboolean (APIENTRYP _PFNGLUNMAPBUFFERPROC) (GLenum target);
+typedef GLsync (APIENTRYP _PFNGLFENCESYNCPROC) (GLenum condition, GLbitfield flags);
+typedef GLenum (APIENTRYP _PFNGLCLIENTWAITSYNCPROC) (GLsync sync, GLbitfield flags, GLuint64 timeout);
+typedef void (APIENTRYP _PFNGLDELETESYNCPROC) (GLsync sync);
+
 #define GL_20_FUN \
 	/* Etc */ \
 	GL_FUN(GetError, _PFNGLGETERRORPROC) \
@@ -215,6 +222,15 @@ typedef void (APIENTRYP _PFNGLRELEASESHADERCOMPILERPROC) (void);
 	GL_FUN(DeleteVertexArrays, _PFNGLDELETEVERTEXARRAYSPROC) \
 	GL_FUN(BindVertexArray, _PFNGLBINDVERTEXARRAYPROC)
 
+#define GL_MAP_BUFFER_FUN \
+	GL_FUN(MapBufferRange, _PFNGLMAPBUFFERRANGEPROC) \
+	GL_FUN(UnmapBuffer, _PFNGLUNMAPBUFFERPROC)
+
+#define GL_SYNC_FUN \
+	GL_FUN(FenceSync, _PFNGLFENCESYNCPROC) \
+	GL_FUN(ClientWaitSync, _PFNGLCLIENTWAITSYNCPROC) \
+	GL_FUN(DeleteSync, _PFNGLDELETESYNCPROC)
+
 #define GL_DEBUG_KHR_FUN \
 	GL_FUN(DebugMessageCallback, _PFNGLDEBUGMESSAGECALLBACKPROC)
 
@@ -231,6 +247,8 @@ struct GLFunctions
 	GL_FBO_FUN
 	GL_FBO_BLIT_FUN
 	GL_VAO_FUN
+	GL_MAP_BUFFER_FUN
+	GL_SYNC_FUN
 	GL_DEBUG_KHR_FUN
 	GL_GREMEMDY_FUN
 

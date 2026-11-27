@@ -39,6 +39,8 @@ struct Config {
     /* Loopback TCP port for the agent console pipe; 0 = disabled.
      * Only honored in debug mode. */
     int consoleAgentPort;
+    int streamPort;
+    int streamFrameRate;
     int renderer;
     bool displayFPS;
     bool printFPS;

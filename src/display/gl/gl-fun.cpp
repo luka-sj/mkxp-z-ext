@@ -171,6 +171,18 @@ void initGLFunctions()
         GL_VAO_FUN;
     }
     
+    if (glMajor >= 3)
+    {
+#undef EXT_SUFFIX
+#define EXT_SUFFIX ""
+        GL_MAP_BUFFER_FUN;
+
+        if (gles || HAVE_EXT(ARB_sync))
+        {
+            GL_SYNC_FUN;
+        }
+    }
+    
     /* Debug callback entrypoints */
     if (HAVE_EXT(KHR_debug))
     {
