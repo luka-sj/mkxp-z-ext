@@ -463,7 +463,8 @@ void EventThread::process(RGSSThreadData &rtData)
             case SDL_MOUSEWHEEL :
                 /* Only consider vertical scrolling for now */
                 SDL_AtomicAdd(&verticalScrollDistance, event.wheel.y);
-                
+                break;
+
             case SDL_FINGERDOWN :
                 i = event.tfinger.fingerId;
                 touchState.fingers[i].down = true;
